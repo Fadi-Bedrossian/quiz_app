@@ -1,0 +1,17 @@
+FROM node:20-alpine AS build
+WORKDIR /src
+COPY package.json ./
+RUN npm install
+COPY . .
+ARG VITE_ENTRA_CLIENT_ID
+ARG VITE_ENTRA_TENANT_ID
+ARG VITE_ENTRA_AUDIENCE
+ARG VITE_AUTH_DISABLED=false
+ENV VITE_ENTRA_CLIENT_ID=$VITE_ENTRA_CLIENT_ID VITE_ENTRA_TENANT_ID=$VITE_ENTRA_TENANT_ID VITE_ENTRA_AUDIENCE=$VITE_ENTRA_AUDIENCE VITE_AUTH_DISABLED=$VITE_AUTH_DISABLED
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+ENV FRONT_DOOR_ID="" NGINX_ENVSUBST_FILTER="FRONT_DOOR_ID"
+COPY --from=build /src/dist /usr/share/nginx/html
+EXPOSE 8080

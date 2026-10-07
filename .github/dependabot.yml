@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /app/api
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /app/web
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infra/shared
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infra/environments/dev
+    schedule: { interval: weekly }
+  - package-ecosystem: terraform
+    directory: /infra/environments/prod
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

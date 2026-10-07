@@ -1,0 +1,41 @@
+environment: dev
+replicaCount:
+  web: 1
+  api: 1
+image:
+  web:
+    repository: example.azurecr.io/quiz-web
+    tag: SET_BY_CI
+  api:
+    repository: example.azurecr.io/quiz-api
+    tag: SET_BY_CI
+  pullPolicy: IfNotPresent
+service:
+  publicIpName: ""
+  publicIpResourceGroup: ""
+workloadIdentityClientId: ""
+tenantId: ""
+keyVaultName: ""
+frontDoorId: ""
+postgres:
+  host: ""
+  port: 5432
+  database: ""
+  user: quizadmin
+entra:
+  tenantId: ""
+  clientId: ""
+  audience: ""
+  adminGroupId: ""
+resources:
+  web:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+  api:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+pdb:
+  enabled: true
+hpa:
+  web: { minReplicas: 1, maxReplicas: 3, cpu: 70 }
+  api: { minReplicas: 1, maxReplicas: 4, cpu: 70 }

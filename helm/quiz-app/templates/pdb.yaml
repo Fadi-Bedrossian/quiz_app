@@ -1,0 +1,15 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: quiz-web }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: quiz-web } }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: quiz-api }
+spec:
+  minAvailable: 1
+  selector: { matchLabels: { app: quiz-api } }
+{{- end }}

@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quizadmin
+      POSTGRES_PASSWORD: quizpassword
+      POSTGRES_DB: quiz
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quizadmin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: ./app/api
+    environment:
+      AUTH_DISABLED: "true"
+      DB_HOST: postgres
+      DB_NAME: quiz
+      DB_USER: quizadmin
+      DB_PASSWORD: quizpassword
+      DB_SSLMODE: disable
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  web:
+    build:
+      context: ./app/web
+      args:
+        VITE_AUTH_DISABLED: "true"
+    environment:
+      FRONT_DOOR_ID: ""
+    ports: ["8080:8080"]
+    depends_on: [api]

@@ -1,0 +1,15 @@
+output "environment" { value = var.environment }
+output "public_url" { value = module.environment.public_url }
+output "public_hostname" { value = module.environment.public_hostname }
+output "origin_fqdn" { value = module.environment.origin_fqdn }
+output "public_ip_name" { value = module.environment.public_ip_name }
+output "deploy_client_id" { value = module.environment.deploy_client_id }
+output "workload_identity_client_id" { value = module.environment.workload_identity_client_id }
+output "key_vault_name" { value = module.environment.key_vault_name }
+output "postgres_host" { value = module.environment.postgres_host }
+output "postgres_database" { value = module.environment.postgres_database }
+output "postgres_admin_user" { value = module.environment.postgres_admin_user }
+output "acr_name" { value = module.environment.acr_name }
+output "acr_login_server" { value = module.environment.acr_login_server }
+output "frontdoor_id" { value = module.environment.frontdoor_id }
+output "aks_name" { value = data.terraform_remote_state.shared.outputs.aks_name }

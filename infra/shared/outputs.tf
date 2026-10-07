@@ -1,0 +1,16 @@
+output "name_suffix" { value = random_string.suffix.result }
+output "resource_group_name" { value = data.azurerm_resource_group.main.name }
+output "aks_name" { value = module.aks.name }
+output "aks_id" { value = module.aks.id }
+output "aks_oidc_issuer_url" { value = module.aks.oidc_issuer_url }
+output "acr_name" { value = module.registry.name }
+output "acr_login_server" { value = module.registry.login_server }
+output "acr_id" { value = module.registry.id }
+output "key_vault_name" { value = module.key_vault.name }
+output "key_vault_id" { value = module.key_vault.id }
+output "postgres_server_id" { value = module.database.server_id }
+output "postgres_server_name" { value = module.database.server_name }
+output "postgres_fqdn" { value = module.database.fqdn }
+output "postgres_admin_user" { value = module.database.administrator_login }
+output "frontdoor_profile_id" { value = module.frontdoor.id }
+output "frontdoor_resource_guid" { value = module.frontdoor.resource_guid }

@@ -1,0 +1,37 @@
+variable "subscription_id" {
+  type = string
+}
+
+variable "tenant_id" {
+  type = string
+}
+
+variable "location" {
+  type    = string
+  default = "westeurope"
+}
+
+variable "resource_group_name" {
+  type    = string
+  default = "sg-quiz-rg"
+}
+
+variable "prefix" {
+  type    = string
+  default = "sg"
+}
+
+variable "github_owner" {
+  type    = string
+  default = "Fadi-Bedrossian"
+}
+
+variable "github_repo" {
+  type    = string
+  default = "quiz_app"
+}
+
+variable "infra_client_id" {
+  type        = string
+  description = "Client ID of bootstrap GitHub Actions infrastructure identity"
+}

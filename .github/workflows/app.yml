@@ -1,0 +1,93 @@
+name: Application
+on:
+  pull_request:
+    paths: ['app/**', 'helm/**', '.github/workflows/app.yml']
+  push:
+    branches: [develop, main]
+    paths: ['app/**', 'helm/**', '.github/workflows/app.yml']
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/repo-check.py
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install -e './app/api[dev]'
+      - run: ruff check app/api
+      - run: pytest app/api
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install
+        working-directory: app/web
+      - run: npm run lint && npm run test && npm run build
+        working-directory: app/web
+      - uses: azure/setup-helm@v4
+      - run: helm lint helm/quiz-app
+      - uses: aquasecurity/trivy-action@0.28.0
+        with: { scan-type: fs, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    concurrency:
+      group: app-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select environment
+        id: env
+        run: |
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then echo "name=prod" >> "$GITHUB_OUTPUT"; else echo "name=dev" >> "$GITHUB_OUTPUT"; fi
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: ACR login
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+      - name: Build and push images
+        env: { TAG: '${{ github.sha }}' }
+        run: |
+          docker build -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG" app/api
+          docker build --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" --build-arg VITE_ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" --build-arg VITE_ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
+          docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG"
+          docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG"
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-api:${{ github.sha }}'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-web:${{ github.sha }}'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+      - uses: azure/use-kubelogin@v1
+        with: { kubelogin-version: 'latest' }
+      - run: az aks get-credentials -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ vars.AKS_NAME }}" --overwrite-existing
+      - run: kubelogin convert-kubeconfig -l azurecli
+      - uses: azure/setup-helm@v4
+      - name: Deploy Helm release
+        run: |
+          ENV=${{ steps.env.outputs.name }}
+          helm upgrade --install "quiz-$ENV" helm/quiz-app -n "quiz-$ENV" --create-namespace -f "helm/quiz-app/values-$ENV.yaml" \
+            --set image.api.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-api" \
+            --set image.web.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-web" \
+            --set image.api.tag="${{ github.sha }}" --set image.web.tag="${{ github.sha }}" \
+            --set service.publicIpName="${{ vars.PUBLIC_IP_NAME }}" --set service.publicIpResourceGroup="${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" --set frontDoorId="${{ vars.FRONT_DOOR_ID }}" \
+            --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
+            --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
+            --wait --timeout 10m
+          kubectl rollout status -n "quiz-$ENV" deployment/quiz-web --timeout=5m
+          kubectl rollout status -n "quiz-$ENV" deployment/quiz-api --timeout=5m
+      - name: Smoke test
+        run: curl --fail --retry 12 --retry-delay 10 "${{ vars.PUBLIC_URL }}/healthz"

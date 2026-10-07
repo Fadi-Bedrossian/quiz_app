@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quiz-api-config
+data:
+  DB_HOST: {{ .Values.postgres.host | quote }}
+  DB_PORT: {{ .Values.postgres.port | quote }}
+  DB_NAME: {{ .Values.postgres.database | quote }}
+  DB_USER: {{ .Values.postgres.user | quote }}
+  DB_SSLMODE: "require"
+  ENTRA_TENANT_ID: {{ .Values.entra.tenantId | quote }}
+  ENTRA_CLIENT_ID: {{ .Values.entra.clientId | quote }}
+  ENTRA_AUDIENCE: {{ .Values.entra.audience | quote }}
+  ADMIN_GROUP_ID: {{ .Values.entra.adminGroupId | quote }}
+  AUTH_DISABLED: "false"

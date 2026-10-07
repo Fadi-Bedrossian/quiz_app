@@ -1,0 +1,13 @@
+output "public_url" { value = "https://${azurerm_cdn_frontdoor_endpoint.env.host_name}" }
+output "public_hostname" { value = azurerm_cdn_frontdoor_endpoint.env.host_name }
+output "origin_fqdn" { value = azurerm_public_ip.web.fqdn }
+output "public_ip_name" { value = azurerm_public_ip.web.name }
+output "deploy_client_id" { value = azurerm_user_assigned_identity.deploy.client_id }
+output "workload_identity_client_id" { value = azurerm_user_assigned_identity.workload.client_id }
+output "key_vault_name" { value = var.key_vault_name }
+output "postgres_host" { value = var.postgres_fqdn }
+output "postgres_database" { value = azurerm_postgresql_flexible_server_database.env.name }
+output "postgres_admin_user" { value = var.postgres_admin_user }
+output "acr_name" { value = var.acr_name }
+output "acr_login_server" { value = var.acr_login_server }
+output "frontdoor_id" { value = var.frontdoor_resource_guid }
