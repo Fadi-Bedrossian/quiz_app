@@ -19,8 +19,6 @@ spec:
           image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports: [{ containerPort: 8080 }]
-          env:
-            - { name: FRONT_DOOR_ID, value: {{ .Values.frontDoorId | quote }} }
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } }
           readinessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 3, periodSeconds: 10 }
           livenessProbe: { httpGet: { path: /healthz, port: 8080 }, initialDelaySeconds: 10, periodSeconds: 20 }
@@ -34,7 +32,6 @@ metadata:
   annotations:
     service.beta.kubernetes.io/azure-pip-name: {{ .Values.service.publicIpName | quote }}
     service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ .Values.service.publicIpResourceGroup | quote }}
-    service.beta.kubernetes.io/azure-allowed-service-tags: "AzureFrontDoor.Backend,AzureLoadBalancer"
 spec:
   type: LoadBalancer
   selector: { app: quiz-web }
