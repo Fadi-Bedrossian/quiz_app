@@ -8,7 +8,3 @@ output "acr_login_server" { value = module.registry.login_server }
 output "acr_id" { value = module.registry.id }
 output "key_vault_name" { value = module.key_vault.name }
 output "key_vault_id" { value = module.key_vault.id }
-output "postgres_server_id" { value = module.database.server_id }
-output "postgres_server_name" { value = module.database.server_name }
-output "postgres_fqdn" { value = module.database.fqdn }
-output "postgres_admin_user" { value = module.database.administrator_login }
