@@ -8,7 +8,7 @@ variable "tenant_id" {
 
 variable "location" {
   type    = string
-  default = "westeurope"
+  default = "northeurope"
 }
 
 variable "resource_group_name" {

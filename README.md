@@ -75,6 +75,7 @@ export AZURE_SUBSCRIPTION_ID=<SUBSCRIPTION_ID>
 export AZURE_TENANT_ID=<TENANT_ID>
 export GITHUB_OWNER=Fadi-Bedrossian
 export GITHUB_REPO=quiz_app
+export AZURE_LOCATION=northeurope
 ./scripts/bootstrap-azure.sh
 ```
 
