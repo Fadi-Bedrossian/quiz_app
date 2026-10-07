@@ -1,10 +1,3 @@
-resource "azurerm_postgresql_flexible_server_database" "env" {
-  name      = "quiz_${var.environment}"
-  server_id = var.postgres_server_id
-  charset   = "UTF8"
-  collation = "en_US.utf8"
-}
-
 resource "azurerm_user_assigned_identity" "workload" {
   name                = "${var.prefix}-quiz-${var.environment}-workload"
   location            = var.location
