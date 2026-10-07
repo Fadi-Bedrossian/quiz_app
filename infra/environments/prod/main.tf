@@ -20,9 +20,6 @@ module "environment" {
   github_repo         = var.github_repo
   github_owner_id     = var.github_owner_id
   github_repo_id      = var.github_repo_id
-  postgres_server_id  = data.terraform_remote_state.shared.outputs.postgres_server_id
-  postgres_fqdn       = data.terraform_remote_state.shared.outputs.postgres_fqdn
-  postgres_admin_user = data.terraform_remote_state.shared.outputs.postgres_admin_user
   aks_oidc_issuer_url = data.terraform_remote_state.shared.outputs.aks_oidc_issuer_url
   aks_id              = data.terraform_remote_state.shared.outputs.aks_id
   acr_id              = data.terraform_remote_state.shared.outputs.acr_id
