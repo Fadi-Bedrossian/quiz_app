@@ -34,17 +34,8 @@ variable "github_repo_id" {
   type = string
 }
 
-variable "postgres_server_id" {
-  type = string
-}
 
-variable "postgres_fqdn" {
-  type = string
-}
 
-variable "postgres_admin_user" {
-  type = string
-}
 
 variable "aks_oidc_issuer_url" {
   type = string
