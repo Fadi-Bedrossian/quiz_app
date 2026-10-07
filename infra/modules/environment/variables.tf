@@ -34,9 +34,6 @@ variable "github_repo_id" {
   type = string
 }
 
-
-
-
 variable "aks_oidc_issuer_url" {
   type = string
 }
@@ -64,8 +61,6 @@ variable "key_vault_id" {
 variable "key_vault_name" {
   type = string
 }
-
-
 
 variable "name_suffix" {
   type = string
