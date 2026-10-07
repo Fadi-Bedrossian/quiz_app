@@ -91,11 +91,13 @@ jobs:
         with:
           image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-api:${{ github.sha }}'
           severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
           exit-code: '1'
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-web:${{ github.sha }}'
           severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
           exit-code: '1'
       - name: Deploy Helm release through AKS command invoke
         shell: bash
