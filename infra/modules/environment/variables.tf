@@ -74,13 +74,7 @@ variable "key_vault_name" {
   type = string
 }
 
-variable "frontdoor_profile_id" {
-  type = string
-}
 
-variable "frontdoor_resource_guid" {
-  type = string
-}
 
 variable "name_suffix" {
   type = string
