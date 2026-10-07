@@ -11,5 +11,4 @@ output "postgres_database" { value = module.environment.postgres_database }
 output "postgres_admin_user" { value = module.environment.postgres_admin_user }
 output "acr_name" { value = module.environment.acr_name }
 output "acr_login_server" { value = module.environment.acr_login_server }
-output "frontdoor_id" { value = module.environment.frontdoor_id }
 output "aks_name" { value = data.terraform_remote_state.shared.outputs.aks_name }
