@@ -7,12 +7,17 @@ import { msal } from './auth'
 
 async function bootstrap() {
   await msal.initialize()
+
   ReactDOM.createRoot(document.getElementById('root')).render(
-    <React.StrictMode>
-      <MsalProvider instance={msal}>
-        <App/>
-      </MsalProvider>
-    </React.StrictMode>,
+    React.createElement(
+      React.StrictMode,
+      null,
+      React.createElement(
+        MsalProvider,
+        { instance: msal },
+        React.createElement(App),
+      ),
+    ),
   )
 }
 
