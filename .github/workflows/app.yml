@@ -6,6 +6,15 @@ on:
     branches: [develop, main]
     paths: ['app/**', 'helm/**', '.github/workflows/app.yml']
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
 permissions:
   id-token: write
   contents: read
@@ -36,16 +45,23 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-24.04
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
     concurrency:
-      group: app-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+      group: app-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Select environment
         id: env
+        shell: bash
         run: |
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then echo "name=prod" >> "$GITHUB_OUTPUT"; else echo "name=dev" >> "$GITHUB_OUTPUT"; fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=dev" >> "$GITHUB_OUTPUT"
+          fi
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
@@ -70,15 +86,17 @@ jobs:
           image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-web:${{ github.sha }}'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-      - uses: azure/use-kubelogin@v1
-        with: { kubelogin-version: 'latest' }
-      - run: az aks get-credentials -g "${{ vars.AZURE_RESOURCE_GROUP }}" -n "${{ vars.AKS_NAME }}" --overwrite-existing
-      - run: kubelogin convert-kubeconfig -l azurecli
-      - uses: azure/setup-helm@v4
-      - name: Deploy Helm release
+      - name: Deploy Helm release through AKS command invoke
+        shell: bash
         run: |
           ENV=${{ steps.env.outputs.name }}
-          helm upgrade --install "quiz-$ENV" helm/quiz-app -n "quiz-$ENV" --create-namespace -f "helm/quiz-app/values-$ENV.yaml" \
+
+          cd helm/quiz-app
+
+          cat > deploy.sh <<EOF
+          set -euo pipefail
+
+          helm upgrade --install "quiz-$ENV" . -n "quiz-$ENV" --create-namespace -f "values-$ENV.yaml" \
             --set image.api.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-api" \
             --set image.web.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-web" \
             --set image.api.tag="${{ github.sha }}" --set image.web.tag="${{ github.sha }}" \
@@ -87,7 +105,18 @@ jobs:
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
             --wait --timeout 10m
-          kubectl rollout status -n "quiz-$ENV" deployment/quiz-web --timeout=5m
+
+          kubectl rollout status -n "quiz-$ENV" statefulset/quiz-postgres --timeout=5m
           kubectl rollout status -n "quiz-$ENV" deployment/quiz-api --timeout=5m
+          kubectl rollout status -n "quiz-$ENV" deployment/quiz-web --timeout=5m
+          kubectl get pods -n "quiz-$ENV" -o wide
+          EOF
+
+          az aks command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_NAME }}" \
+            --command "bash deploy.sh" \
+            --file . \
+            -o json
       - name: Smoke test
         run: curl --fail --retry 12 --retry-delay 10 "${{ vars.PUBLIC_URL }}/healthz"
