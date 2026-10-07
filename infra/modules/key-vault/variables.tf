@@ -31,3 +31,12 @@ variable "appinsights_connection_string" {
   type      = string
   sensitive = true
 }
+
+variable "aks_subnet_id" {
+  type = string
+}
+
+variable "ci_runner_ip" {
+  type    = string
+  default = ""
+}
