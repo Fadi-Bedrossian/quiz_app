@@ -29,7 +29,7 @@ jobs:
         working-directory: app/web
       - uses: azure/setup-helm@v4
       - run: helm lint helm/quiz-app
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: fs, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
 
   deploy:
@@ -60,12 +60,12 @@ jobs:
           docker build --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" --build-arg VITE_ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" --build-arg VITE_ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG"
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG"
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-api:${{ github.sha }}'
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ vars.ACR_NAME }}.azurecr.io/quiz-web:${{ github.sha }}'
           severity: 'HIGH,CRITICAL'
