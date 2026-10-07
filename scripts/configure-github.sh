@@ -13,7 +13,6 @@ set_env_vars() {
   gh variable set PUBLIC_IP_NAME --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw public_ip_name)"
   gh variable set KEY_VAULT_NAME --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw key_vault_name)"
   gh variable set WORKLOAD_IDENTITY_CLIENT_ID --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw workload_identity_client_id)"
-  gh variable set FRONT_DOOR_ID --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw frontdoor_id)"
   gh variable set POSTGRES_HOST --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw postgres_host)"
   gh variable set POSTGRES_DATABASE --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw postgres_database)"
   gh variable set POSTGRES_ADMIN_USER --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw postgres_admin_user)"
