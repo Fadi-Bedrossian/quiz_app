@@ -91,7 +91,7 @@ resource "azurerm_cdn_frontdoor_origin_group" "env" {
 
 resource "azurerm_cdn_frontdoor_origin" "env" {
   name                           = "${var.environment}-origin"
-  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.env.id
+  cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.env.id
   enabled                        = true
   host_name                      = azurerm_public_ip.web.fqdn
   origin_host_header             = azurerm_public_ip.web.fqdn
