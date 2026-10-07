@@ -12,4 +12,4 @@ data:
   ENTRA_CLIENT_ID: {{ .Values.entra.clientId | quote }}
   ENTRA_AUDIENCE: {{ .Values.entra.audience | quote }}
   ADMIN_GROUP_ID: {{ .Values.entra.adminGroupId | quote }}
-  AUTH_DISABLED: "false"
+  AUTH_DISABLED: {{ .Values.authDisabled | quote }}
