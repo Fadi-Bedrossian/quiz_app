@@ -124,6 +124,14 @@ PROJECT_RG_ID=$(az group show -n "$PROJECT_RG" --query id -o tsv)
 STATE_ID=$(az storage account show -g "$STATE_RG" -n "$STATE_ACCOUNT" --query id -o tsv)
 
 step "Assigning Azure RBAC"
+echo "Ensuring Reader on the subscription for VM SKU/quota discovery..."
+az role assignment create \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Reader" \
+  --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID" \
+  -o none 2>/dev/null || true
+
 for ROLE in "Contributor" "User Access Administrator"; do
   echo "Ensuring $ROLE on $PROJECT_RG..."
   az role assignment create \
