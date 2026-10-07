@@ -83,12 +83,24 @@ else
 fi
 
 step "Configuring Terraform state container"
-ACCOUNT_KEY=$(az storage account keys list -g "$STATE_RG" -n "$STATE_ACCOUNT" --query '[0].value' -o tsv)
-az storage container create \
-  --account-name "$STATE_ACCOUNT" \
-  --name "$CONTAINER" \
-  --account-key "$ACCOUNT_KEY" \
-  -o none
+SHARED_KEY_ACCESS=$(az storage account show -g "$STATE_RG" -n "$STATE_ACCOUNT" --query allowSharedKeyAccess -o tsv)
+
+if [ "$SHARED_KEY_ACCESS" = "false" ]; then
+  az storage container create \
+    --account-name "$STATE_ACCOUNT" \
+    --name "$CONTAINER" \
+    --auth-mode login \
+    -o none
+else
+  ACCOUNT_KEY=$(az storage account keys list -g "$STATE_RG" -n "$STATE_ACCOUNT" --query '[0].value' -o tsv)
+  az storage container create \
+    --account-name "$STATE_ACCOUNT" \
+    --name "$CONTAINER" \
+    --account-key "$ACCOUNT_KEY" \
+    -o none
+  unset ACCOUNT_KEY
+fi
+
 az storage account blob-service-properties update \
   --resource-group "$STATE_RG" \
   --account-name "$STATE_ACCOUNT" \
@@ -96,7 +108,6 @@ az storage account blob-service-properties update \
   --enable-delete-retention true \
   --delete-retention-days 7 \
   -o none
-unset ACCOUNT_KEY
 echo "✓ State container $CONTAINER configured with versioning and soft delete"
 
 step "Creating or reusing GitHub Actions managed identity"
