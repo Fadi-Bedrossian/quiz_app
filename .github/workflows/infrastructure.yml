@@ -131,6 +131,16 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Select AKS VM size with available quota
+        if: inputs.operation != 'destroy'
+        shell: bash
+        run: |
+          LOCATION="${{ vars.AZURE_LOCATION }}"
+          LOCATION="${LOCATION:-northeurope}"
+          VM_SIZE="$(bash scripts/select-aks-vm-size.sh "$LOCATION")"
+          echo "Selected AKS VM size: $VM_SIZE"
+          echo "TF_VAR_node_vm_size=$VM_SIZE" >> "$GITHUB_ENV"
+
       - name: Initialize shared state
         if: inputs.operation != 'destroy'
         shell: bash
