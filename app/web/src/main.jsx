@@ -3,12 +3,25 @@ import ReactDOM from 'react-dom/client'
 import { MsalProvider } from '@azure/msal-react'
 
 import App from './App'
-import { msal } from './auth'
+import { authDisabled, msal } from './auth'
 
 async function bootstrap() {
+  const root = ReactDOM.createRoot(document.getElementById('root'))
+
+  if (authDisabled) {
+    root.render(
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(App),
+      ),
+    )
+    return
+  }
+
   await msal.initialize()
 
-  ReactDOM.createRoot(document.getElementById('root')).render(
+  root.render(
     React.createElement(
       React.StrictMode,
       null,
