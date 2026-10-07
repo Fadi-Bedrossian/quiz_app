@@ -85,6 +85,29 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Select AKS VM size
+        shell: bash
+        run: |
+          LOCATION="${{ vars.AZURE_LOCATION }}"
+          LOCATION="${LOCATION:-northeurope}"
+
+          if az aks show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_NAME }}" \
+            -o none 2>/dev/null; then
+            VM_SIZE="$(az aks nodepool list \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --cluster-name "${{ vars.AKS_NAME }}" \
+              --query '[0].vmSize' \
+              -o tsv)"
+            echo "Reusing existing AKS VM size: $VM_SIZE"
+          else
+            VM_SIZE="$(bash scripts/select-aks-vm-size.sh "$LOCATION")"
+            echo "Selected AKS VM size: $VM_SIZE"
+          fi
+
+          echo "TF_VAR_node_vm_size=$VM_SIZE" >> "$GITHUB_ENV"
+
       - name: Prepare temporary Key Vault firewall access
         shell: bash
         run: |
@@ -192,14 +215,28 @@ jobs:
           fi
 
 
-      - name: Select AKS VM size with available quota
+      - name: Select AKS VM size
         if: inputs.operation != 'destroy'
         shell: bash
         run: |
           LOCATION="${{ vars.AZURE_LOCATION }}"
           LOCATION="${LOCATION:-northeurope}"
-          VM_SIZE="$(bash scripts/select-aks-vm-size.sh "$LOCATION")"
-          echo "Selected AKS VM size: $VM_SIZE"
+
+          if az aks show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_NAME }}" \
+            -o none 2>/dev/null; then
+            VM_SIZE="$(az aks nodepool list \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --cluster-name "${{ vars.AKS_NAME }}" \
+              --query '[0].vmSize' \
+              -o tsv)"
+            echo "Reusing existing AKS VM size: $VM_SIZE"
+          else
+            VM_SIZE="$(bash scripts/select-aks-vm-size.sh "$LOCATION")"
+            echo "Selected AKS VM size: $VM_SIZE"
+          fi
+
           echo "TF_VAR_node_vm_size=$VM_SIZE" >> "$GITHUB_ENV"
 
       - name: Initialize shared state
