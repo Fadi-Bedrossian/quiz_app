@@ -4,6 +4,7 @@ resource "azurerm_virtual_network" "main" {
   resource_group_name = var.resource_group_name
   address_space       = ["10.40.0.0/16"]
 }
+
 resource "azurerm_subnet" "aks" {
   name                 = "aks"
   resource_group_name  = var.resource_group_name
