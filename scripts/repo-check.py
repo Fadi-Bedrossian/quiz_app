@@ -47,9 +47,13 @@ if seed_path.exists():
         errors.append(f"expected 20 seed questions, found {seed_count}")
 
 infra_workflow = (ROOT / ".github/workflows/infrastructure.yml").read_text(encoding="utf-8")
-for key in ("shared.tfstate", "dev.tfstate", "prod.tfstate"):
-    if key not in infra_workflow:
-        errors.append(f"infrastructure workflow does not reference {key}")
+if "shared.tfstate" not in infra_workflow:
+    errors.append("infrastructure workflow does not reference shared.tfstate")
+if 'key=${{ inputs.environment }}.tfstate' not in infra_workflow:
+    errors.append("infrastructure workflow must derive dev/prod state keys from inputs.environment")
+for environment_name in ("dev", "prod"):
+    if environment_name not in infra_workflow:
+        errors.append(f"infrastructure workflow does not expose {environment_name} environment")
 if "-lock-timeout=5m" not in infra_workflow:
     errors.append("Terraform workflow must use -lock-timeout=5m")
 if "use_azuread_auth=true" not in infra_workflow or "use_oidc=true" not in infra_workflow:
