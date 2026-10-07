@@ -117,19 +117,43 @@ jobs:
             --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
-            --wait --timeout 10m
+            --wait --timeout 4m
 
-          kubectl rollout status -n "quiz-$ENV" statefulset/quiz-postgres --timeout=5m
-          kubectl rollout status -n "quiz-$ENV" deployment/quiz-api --timeout=5m
-          kubectl rollout status -n "quiz-$ENV" deployment/quiz-web --timeout=5m
           kubectl get pods -n "quiz-$ENV" -o wide
+          kubectl get service -n "quiz-$ENV"
+          kubectl get endpoints -n "quiz-$ENV"
           EOF
 
-          az aks command invoke \
+          RESULT="$(az aks command invoke \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "${{ vars.AKS_NAME }}" \
             --command "bash deploy.sh" \
             --file . \
-            -o json
-      - name: Smoke test
-        run: curl --fail --retry 12 --retry-delay 10 "${{ vars.PUBLIC_URL }}/healthz"
+            -o json)"
+
+          echo "$RESULT"
+          STATE="$(jq -r '.provisioningState // empty' <<<"$RESULT")"
+          EXIT_CODE="$(jq -r '.exitCode // empty' <<<"$RESULT")"
+
+          if [ "$STATE" != "Succeeded" ] || [ "$EXIT_CODE" != "0" ]; then
+            echo "AKS deployment command did not complete successfully: state=$STATE exitCode=$EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Smoke test API through web proxy
+        shell: bash
+        run: |
+          curl --fail --show-error --retry 12 --retry-delay 10 --retry-all-errors \
+            "${{ vars.PUBLIC_URL }}/api/healthz"
+
+      - name: Collect AKS diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          ENV=${{ steps.env.outputs.name }}
+
+          az aks command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_NAME }}" \
+            --command "kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api describe ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true" \
+            -o json || true
