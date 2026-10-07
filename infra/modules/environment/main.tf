@@ -44,6 +44,12 @@ resource "azurerm_role_assignment" "deploy_aks_rbac" {
   principal_id         = azurerm_user_assigned_identity.deploy.principal_id
 }
 
+resource "azurerm_role_assignment" "deploy_aks_contributor" {
+  scope                = var.aks_id
+  role_definition_name = "Azure Kubernetes Service Contributor Role"
+  principal_id         = azurerm_user_assigned_identity.deploy.principal_id
+}
+
 resource "azurerm_role_assignment" "deploy_acr" {
   scope                = var.acr_id
   role_definition_name = "AcrPush"
