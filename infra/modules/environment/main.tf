@@ -58,4 +58,3 @@ resource "azurerm_public_ip" "web" {
   sku                 = "Standard"
   domain_name_label   = "${var.prefix}-quiz-${var.environment}-${var.name_suffix}"
 }
-
