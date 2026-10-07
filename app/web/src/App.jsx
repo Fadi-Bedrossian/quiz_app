@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import { request } from './api'
 import './styles.css'
 
@@ -80,5 +80,5 @@ function Admin() {
 
 export default function App() {
   const [page, setPage] = useState('quiz')
-  return <main><nav><button onClick={()=>setPage('quiz')}>Quiz</button><button onClick={()=>setPage('admin')}>Admin</button></nav>{page==='quiz'?<Quiz/>:<Admin/>}</main>
+  return <main><nav><button onClick={()=>setPage('quiz')}>Quiz</button><button onClick={()=>setPage('admin')}>Admin</button></nav>{createElement(page === 'quiz' ? Quiz : Admin)}</main>
 }
