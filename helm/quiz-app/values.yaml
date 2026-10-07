@@ -16,7 +16,6 @@ service:
 workloadIdentityClientId: ""
 tenantId: ""
 keyVaultName: ""
-frontDoorId: ""
 postgres:
   host: ""
   port: 5432
