@@ -1,26 +1,39 @@
 name: Infrastructure
+
 on:
   pull_request:
-    paths: ['infra/**', 'scripts/bootstrap-azure.sh', '.github/workflows/infrastructure.yml']
-  push:
-    branches: [develop, main]
-    paths: ['infra/**', '.github/workflows/infrastructure.yml']
+    paths:
+      - 'infra/**'
+      - 'scripts/bootstrap-azure.sh'
+      - '.github/workflows/infrastructure.yml'
   workflow_dispatch:
     inputs:
-      target:
-        description: Terraform state to destroy (manual only)
+      environment:
+        description: Azure environment
         required: true
         type: choice
-        options: [dev, prod, shared]
+        options:
+          - dev
+          - prod
+        default: dev
+      operation:
+        description: Terraform operation
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+        default: plan
       confirm_destroy:
-        description: Confirm destructive Terraform operation
+        description: Required only for destroy
         required: true
         type: boolean
         default: false
+
 permissions:
   id-token: write
   contents: read
-  pull-requests: write
 
 env:
   TF_IN_AUTOMATION: "true"
@@ -29,139 +42,182 @@ env:
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_CLIENT_ID: ${{ vars.AZURE_INFRA_CLIENT_ID }}
+  TF_VAR_location: ${{ vars.AZURE_LOCATION }}
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.9.8 }
-      - run: python scripts/repo-check.py
-      - run: terraform fmt -recursive -check infra
-      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          terraform_version: 1.9.8
+
+      - name: Repository checks
+        run: python scripts/repo-check.py
+
+      - name: Terraform format
+        run: terraform fmt -recursive -check infra
+
+      - name: Terraform security scan
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           scan-type: config
           scan-ref: infra
           severity: HIGH,CRITICAL
           exit-code: '1'
 
-  plan:
+  pull-request-plan:
     if: github.event_name == 'pull_request'
     needs: quality
-    strategy:
-      matrix:
-        root: [shared, dev, prod]
     runs-on: ubuntu-latest
-    concurrency:
-      group: tf-plan-${{ matrix.root }}-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
+
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_INFRA_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.9.8 }
-      - name: Select root and state key
-        id: select
-        shell: bash
-        run: |
-          if [ "${{ matrix.root }}" = shared ]; then ROOT=infra/shared; KEY=shared.tfstate; ENVNAME=shared; else ROOT=infra/environments/${{ matrix.root }}; KEY=${{ matrix.root }}.tfstate; ENVNAME=${{ matrix.root }}; fi
-          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
-      - name: Terraform init
-        run: >-
-          terraform -chdir=${{ steps.select.outputs.root }} init -input=false
-          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
-          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
-          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}"
-          -backend-config="key=${{ steps.select.outputs.key }}"
-          -backend-config="use_oidc=true"
-          -backend-config="use_azuread_auth=true"
-      - run: terraform -chdir=${{ steps.select.outputs.root }} validate
-      - name: Terraform plan
-        shell: bash
-        run: |
-          EXTRA=""
-          if [ "${{ matrix.root }}" != shared ]; then EXTRA="-var=tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"; fi
-          terraform -chdir=${{ steps.select.outputs.root }} plan -input=false -lock-timeout=5m \
-            -var=subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }} \
-            -var=tenant_id=${{ vars.AZURE_TENANT_ID }} \
-            -var=infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }} $EXTRA
 
-  apply-dev:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    needs: quality
-    environment: dev
-    runs-on: ubuntu-latest
-    concurrency: { group: terraform-dev, cancel-in-progress: false }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with: { client-id: '${{ vars.AZURE_INFRA_CLIENT_ID }}', tenant-id: '${{ vars.AZURE_TENANT_ID }}', subscription-id: '${{ vars.AZURE_SUBSCRIPTION_ID }}' }
       - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.9.8 }
-      - run: terraform -chdir=infra/environments/dev init -input=false -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" -backend-config="key=dev.tfstate" -backend-config="use_oidc=true" -backend-config="use_azuread_auth=true"
-      - run: terraform -chdir=infra/environments/dev apply -auto-approve -input=false -lock-timeout=5m -var=subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }} -var=tenant_id=${{ vars.AZURE_TENANT_ID }} -var=infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }} -var=tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}
-
-  apply-shared-prod:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: quality
-    environment: prod
-    runs-on: ubuntu-latest
-    concurrency: { group: terraform-shared-prod, cancel-in-progress: false }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with: { client-id: '${{ vars.AZURE_INFRA_CLIENT_ID }}', tenant-id: '${{ vars.AZURE_TENANT_ID }}', subscription-id: '${{ vars.AZURE_SUBSCRIPTION_ID }}' }
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.9.8 }
-      - name: Apply shared state
-        run: |
-          terraform -chdir=infra/shared init -input=false -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" -backend-config="key=shared.tfstate" -backend-config="use_oidc=true" -backend-config="use_azuread_auth=true"
-          terraform -chdir=infra/shared apply -auto-approve -input=false -lock-timeout=5m -var=subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }} -var=tenant_id=${{ vars.AZURE_TENANT_ID }} -var=infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}
-      - name: Apply prod state
-        run: |
-          terraform -chdir=infra/environments/prod init -input=false -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" -backend-config="key=prod.tfstate" -backend-config="use_oidc=true" -backend-config="use_azuread_auth=true"
-          terraform -chdir=infra/environments/prod apply -auto-approve -input=false -lock-timeout=5m -var=subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }} -var=tenant_id=${{ vars.AZURE_TENANT_ID }} -var=infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }} -var=tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}
-
-  destroy:
-    if: github.event_name == 'workflow_dispatch' && inputs.confirm_destroy
-    needs: quality
-    environment: ${{ inputs.target == 'dev' && 'dev' || 'prod' }}
-    runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ inputs.target == 'dev' && 'terraform-dev' || 'terraform-shared-prod' }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_INFRA_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - uses: hashicorp/setup-terraform@v3
-        with: { terraform_version: 1.9.8 }
-      - name: Select root
-        id: select
+          terraform_version: 1.9.8
+
+      - name: Plan shared infrastructure
         shell: bash
         run: |
-          if [ "${{ inputs.target }}" = shared ]; then echo "root=infra/shared" >> "$GITHUB_OUTPUT"; echo "key=shared.tfstate" >> "$GITHUB_OUTPUT"; else echo "root=infra/environments/${{ inputs.target }}" >> "$GITHUB_OUTPUT"; echo "key=${{ inputs.target }}.tfstate" >> "$GITHUB_OUTPUT"; fi
-      - name: Init and destroy
-        shell: bash
-        run: |
-          terraform -chdir=${{ steps.select.outputs.root }} init -input=false \
+          terraform -chdir=infra/shared init -input=false \
             -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
-            -backend-config="key=${{ steps.select.outputs.key }}" \
-            -backend-config="use_oidc=true" -backend-config="use_azuread_auth=true"
-          EXTRA=""
-          if [ "${{ inputs.target }}" != shared ]; then EXTRA="-var=tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"; fi
-          terraform -chdir=${{ steps.select.outputs.root }} destroy -auto-approve -input=false -lock-timeout=5m \
-            -var=subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }} \
-            -var=tenant_id=${{ vars.AZURE_TENANT_ID }} \
-            -var=infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }} $EXTRA
+            -backend-config="key=shared.tfstate" \
+            -backend-config="use_oidc=true" \
+            -backend-config="use_azuread_auth=true"
+
+          terraform -chdir=infra/shared validate
+
+          terraform -chdir=infra/shared plan -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}"
+
+  terraform:
+    if: github.event_name == 'workflow_dispatch'
+    needs: quality
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: terraform-infrastructure
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate destroy confirmation
+        if: inputs.operation == 'destroy' && !inputs.confirm_destroy
+        run: |
+          echo "Destroy requires confirm_destroy=true."
+          exit 1
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_INFRA_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Initialize shared state
+        if: inputs.operation != 'destroy'
+        shell: bash
+        run: |
+          terraform -chdir=infra/shared init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=shared.tfstate" \
+            -backend-config="use_oidc=true" \
+            -backend-config="use_azuread_auth=true"
+
+          terraform -chdir=infra/shared validate
+
+      - name: Plan shared infrastructure
+        if: inputs.operation == 'plan'
+        shell: bash
+        run: |
+          terraform -chdir=infra/shared plan -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}"
+
+      - name: Apply shared infrastructure
+        if: inputs.operation == 'apply'
+        shell: bash
+        run: |
+          terraform -chdir=infra/shared apply -auto-approve -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}"
+
+      - name: Check whether shared state exists
+        if: inputs.operation == 'plan'
+        id: shared
+        shell: bash
+        run: |
+          if terraform -chdir=infra/shared output -json >/tmp/shared-outputs.json 2>/dev/null && \
+             [ "$(jq 'length' /tmp/shared-outputs.json)" -gt 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Shared infrastructure has not been applied yet."
+            echo "This first plan therefore shows the shared resources only."
+            echo "Run Apply for ${{ inputs.environment }} to create shared resources and then ${{ inputs.environment }}."
+          fi
+
+      - name: Initialize environment state
+        if: inputs.operation == 'apply' || inputs.operation == 'destroy' || (inputs.operation == 'plan' && steps.shared.outputs.ready == 'true')
+        shell: bash
+        run: |
+          terraform -chdir=infra/environments/${{ inputs.environment }} init -input=false \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="key=${{ inputs.environment }}.tfstate" \
+            -backend-config="use_oidc=true" \
+            -backend-config="use_azuread_auth=true"
+
+          terraform -chdir=infra/environments/${{ inputs.environment }} validate
+
+      - name: Plan environment
+        if: inputs.operation == 'plan' && steps.shared.outputs.ready == 'true'
+        shell: bash
+        run: |
+          terraform -chdir=infra/environments/${{ inputs.environment }} plan -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}" \
+            -var="tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+
+      - name: Apply environment
+        if: inputs.operation == 'apply'
+        shell: bash
+        run: |
+          terraform -chdir=infra/environments/${{ inputs.environment }} apply -auto-approve -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}" \
+            -var="tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+
+      - name: Destroy environment
+        if: inputs.operation == 'destroy' && inputs.confirm_destroy
+        shell: bash
+        run: |
+          terraform -chdir=infra/environments/${{ inputs.environment }} destroy -auto-approve -input=false -lock-timeout=5m \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
+            -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}" \
+            -var="tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
