@@ -15,6 +15,8 @@ resource "time_sleep" "network_rbac_propagation" {
   depends_on      = [azurerm_role_assignment.network]
 }
 
+# Trivy AZU-0041 does not recognize AKS' special 0.0.0.0/32 value, which Azure documents as allowing only the cluster outbound IP.
+# trivy:ignore:AZU-0041
 resource "azurerm_kubernetes_cluster" "main" {
   name                              = "${var.prefix}-quiz-aks"
   location                          = var.location
