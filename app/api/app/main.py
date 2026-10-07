@@ -48,7 +48,7 @@ async def lifespan(_: FastAPI):
         try:
             from azure.monitor.opentelemetry import configure_azure_monitor
             configure_azure_monitor(connection_string=settings.appinsights_connection_string)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("azure_monitor_configuration_failed")
     init_db()
     yield
