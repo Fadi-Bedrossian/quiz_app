@@ -17,10 +17,12 @@ workloadIdentityClientId: ""
 tenantId: ""
 keyVaultName: ""
 postgres:
-  host: ""
+  host: quiz-postgres
   port: 5432
-  database: ""
+  database: quiz
   user: quizadmin
+  storageClassName: managed-csi
+  storage: 8Gi
 entra:
   tenantId: ""
   clientId: ""
