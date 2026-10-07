@@ -71,8 +71,3 @@ module "aks" {
   acr_id                     = module.registry.id
 }
 
-module "frontdoor" {
-  source              = "../modules/frontdoor-profile"
-  prefix              = var.prefix
-  resource_group_name = data.azurerm_resource_group.main.name
-}
