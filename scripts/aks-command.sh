@@ -12,34 +12,56 @@ invoke_args=(
   --name "$AKS_NAME"
   --command "$COMMAND"
   --no-wait
-  -o json
 )
 
 if [[ -n "$FILE_PATH" ]]; then
   invoke_args+=(--file "$FILE_PATH")
 fi
 
-SUBMIT="$(az "${invoke_args[@]}")"
+set +e
+SUBMIT="$(az "${invoke_args[@]}" 2>&1)"
+submit_rc=$?
+set -e
+
 echo "$SUBMIT"
 
-COMMAND_ID="$(jq -r '.id // .commandId // empty' <<<"$SUBMIT")"
+# Azure CLI currently prints a human-readable submission message for --no-wait,
+# for example:
+# command id: 0123456789abcdef0123456789abcdef, started at: None, status: Running
+COMMAND_ID="$(grep -Eo '[0-9a-fA-F]{32}' <<<"$SUBMIT" | head -n1 || true)"
+
+# Keep JSON compatibility in case a future CLI version returns structured output.
+if [[ -z "$COMMAND_ID" ]] && jq -e . >/dev/null 2>&1 <<<"$SUBMIT"; then
+  COMMAND_ID="$(jq -r '.id // .commandId // empty' <<<"$SUBMIT")"
+fi
+
 if [[ -z "$COMMAND_ID" || "$COMMAND_ID" == "null" ]]; then
-  echo "AKS command submission did not return a command id." >&2
+  echo "AKS command submission did not return a command id (exit code $submit_rc)." >&2
   exit 1
 fi
 
 echo "AKS command id: $COMMAND_ID"
 
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 72); do
   set +e
   RESULT="$(az aks command result     --resource-group "$RESOURCE_GROUP"     --name "$AKS_NAME"     --command-id "$COMMAND_ID"     -o json 2>/tmp/aks-command-result.err)"
   rc=$?
   set -e
 
   if [[ $rc -ne 0 ]]; then
-    if [[ $attempt -eq 60 ]]; then
+    if [[ $attempt -eq 72 ]]; then
       cat /tmp/aks-command-result.err >&2 || true
       echo "Timed out fetching AKS command result." >&2
+      exit 1
+    fi
+    sleep 5
+    continue
+  fi
+
+  if ! jq -e . >/dev/null 2>&1 <<<"$RESULT"; then
+    echo "Unexpected AKS command result:"
+    echo "$RESULT"
+    if [[ $attempt -eq 72 ]]; then
       exit 1
     fi
     sleep 5
