@@ -52,6 +52,8 @@ module "key_vault" {
   secrets_officer_principal_id  = data.azurerm_user_assigned_identity.infra.principal_id
   postgres_admin_password       = random_password.postgres_admin.result
   appinsights_connection_string = module.monitoring.appinsights_connection_string
+  aks_subnet_id                 = module.network.aks_subnet_id
+  ci_runner_ip                  = var.ci_runner_ip
 }
 
 module "aks" {
