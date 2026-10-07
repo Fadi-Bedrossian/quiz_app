@@ -5,6 +5,8 @@ set -euo pipefail
 : "${AZURE_TENANT_ID:?set AZURE_TENANT_ID}"
 : "${GITHUB_OWNER:=Fadi-Bedrossian}"
 : "${GITHUB_REPO:=quiz_app}"
+: "${GITHUB_OWNER_ID:=59285089}"
+: "${GITHUB_REPO_ID:=1408354219}"
 
 LOCATION="${AZURE_LOCATION:-northeurope}"
 STATE_RG="${TFSTATE_RESOURCE_GROUP:-sg-tfstate-rg}"
@@ -150,12 +152,16 @@ step "Creating GitHub OIDC federated credentials"
 create_fic() {
   local NAME=$1
   local SUBJECT=$2
-  if az identity federated-credential show \
-      -g "$PROJECT_RG" \
-      --identity-name "$IDENTITY" \
-      -n "$NAME" >/dev/null 2>&1; then
-    echo "✓ $NAME already exists"
-  else
+  local EXISTING_SUBJECT
+
+  EXISTING_SUBJECT=$(az identity federated-credential show \
+    -g "$PROJECT_RG" \
+    --identity-name "$IDENTITY" \
+    -n "$NAME" \
+    --query subject \
+    -o tsv 2>/dev/null || true)
+
+  if [ -z "$EXISTING_SUBJECT" ]; then
     az identity federated-credential create \
       -g "$PROJECT_RG" \
       --identity-name "$IDENTITY" \
@@ -165,12 +171,25 @@ create_fic() {
       --audiences "api://AzureADTokenExchange" \
       -o none
     echo "✓ $NAME created"
+  elif [ "$EXISTING_SUBJECT" = "$SUBJECT" ]; then
+    echo "✓ $NAME already matches GitHub immutable OIDC subject"
+  else
+    az identity federated-credential update \
+      -g "$PROJECT_RG" \
+      --identity-name "$IDENTITY" \
+      -n "$NAME" \
+      --issuer "https://token.actions.githubusercontent.com" \
+      --subject "$SUBJECT" \
+      --audiences "api://AzureADTokenExchange" \
+      -o none
+    echo "✓ $NAME updated to GitHub immutable OIDC subject"
   fi
 }
 
-create_fic pull-request "repo:${GITHUB_OWNER}/${GITHUB_REPO}:pull_request"
-create_fic dev "repo:${GITHUB_OWNER}/${GITHUB_REPO}:environment:dev"
-create_fic prod "repo:${GITHUB_OWNER}/${GITHUB_REPO}:environment:prod"
+IMMUTABLE_REPO="repo:${GITHUB_OWNER}@${GITHUB_OWNER_ID}/${GITHUB_REPO}@${GITHUB_REPO_ID}"
+create_fic pull-request "${IMMUTABLE_REPO}:pull_request"
+create_fic dev "${IMMUTABLE_REPO}:environment:dev"
+create_fic prod "${IMMUTABLE_REPO}:environment:prod"
 
 step "Bootstrap complete"
 cat <<EOF
@@ -184,4 +203,6 @@ TFSTATE_CONTAINER=$CONTAINER
 AZURE_RESOURCE_GROUP=$PROJECT_RG
 AKS_NAME=sg-quiz-aks
 AZURE_LOCATION=$LOCATION
+GITHUB_OWNER_ID=$GITHUB_OWNER_ID
+GITHUB_REPO_ID=$GITHUB_REPO_ID
 EOF
