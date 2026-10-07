@@ -1,4 +1,5 @@
 environment: dev
+authDisabled: true
 replicaCount: { web: 1, api: 1 }
 hpa:
   web: { minReplicas: 1, maxReplicas: 2, cpu: 75 }
