@@ -12,6 +12,5 @@ RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY nginx.conf /etc/nginx/templates/default.conf.template
-ENV FRONT_DOOR_ID="" NGINX_ENVSUBST_FILTER="FRONT_DOOR_ID"
 COPY --from=build /src/dist /usr/share/nginx/html
 EXPOSE 8080
