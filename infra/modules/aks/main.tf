@@ -24,6 +24,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   oidc_issuer_enabled               = true
   workload_identity_enabled         = true
   role_based_access_control_enabled = true
+  api_server_authorized_ip_ranges   = ["0.0.0.0/32"]
   automatic_upgrade_channel         = "patch"
   node_os_upgrade_channel           = "NodeImage"
 
