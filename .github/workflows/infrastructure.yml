@@ -234,19 +234,32 @@ jobs:
             -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
             -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}"
 
-      - name: Check whether shared state exists
+      - name: Check whether shared infrastructure is ready
         if: inputs.operation == 'plan'
         id: shared
         shell: bash
         run: |
-          if terraform -chdir=infra/shared output -json >/tmp/shared-outputs.json 2>/dev/null && \
-             [ "$(jq 'length' /tmp/shared-outputs.json)" -gt 0 ]; then
+          terraform -chdir=infra/shared output -json >/tmp/shared-outputs.json 2>/dev/null || echo '{}' >/tmp/shared-outputs.json
+
+          if jq -e '
+            has("aks_id") and
+            has("aks_oidc_issuer_url") and
+            has("acr_id") and
+            has("acr_name") and
+            has("acr_login_server") and
+            has("key_vault_id") and
+            has("key_vault_name") and
+            has("name_suffix")
+          ' /tmp/shared-outputs.json >/dev/null; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Shared infrastructure is ready; environment plan can run."
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Shared infrastructure has not been applied yet."
-            echo "This first plan therefore shows the shared resources only."
-            echo "Run Apply for ${{ inputs.environment }} to create shared resources and then ${{ inputs.environment }}."
+            echo "Shared state is only partially applied and is not ready for ${{ inputs.environment }}."
+            echo "The shared plan above is the authoritative plan for this run."
+            echo "Apply shared infrastructure successfully before planning ${{ inputs.environment }} resources."
+            echo "Current shared outputs:"
+            jq -r 'keys[]' /tmp/shared-outputs.json || true
           fi
 
       - name: Initialize environment state
