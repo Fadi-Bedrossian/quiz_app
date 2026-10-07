@@ -7,6 +7,13 @@ resource "azurerm_key_vault" "main" {
   rbac_authorization_enabled = true
   soft_delete_retention_days = 7
   purge_protection_enabled   = false
+
+  network_acls {
+    bypass                     = "AzureServices"
+    default_action             = "Deny"
+    virtual_network_subnet_ids = [var.aks_subnet_id]
+    ip_rules                   = var.ci_runner_ip == "" ? [] : [var.ci_runner_ip]
+  }
 }
 resource "azurerm_role_assignment" "secrets_officer" {
   scope                = azurerm_key_vault.main.id
