@@ -12,11 +12,11 @@ resource "azurerm_user_assigned_identity" "workload" {
 }
 
 resource "azurerm_federated_identity_credential" "workload" {
-  name                = "quiz-${var.environment}-api"
+  name      = "quiz-${var.environment}-api"
   parent_id = azurerm_user_assigned_identity.workload.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = var.aks_oidc_issuer_url
-  subject             = "system:serviceaccount:quiz-${var.environment}:quiz-api"
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = var.aks_oidc_issuer_url
+  subject   = "system:serviceaccount:quiz-${var.environment}:quiz-api"
 }
 
 resource "azurerm_role_assignment" "kv" {
@@ -32,11 +32,11 @@ resource "azurerm_user_assigned_identity" "deploy" {
 }
 
 resource "azurerm_federated_identity_credential" "deploy" {
-  name                = "github-${var.environment}"
+  name      = "github-${var.environment}"
   parent_id = azurerm_user_assigned_identity.deploy.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = "https://token.actions.githubusercontent.com"
-  subject             = "repo:${var.github_owner}/${var.github_repo}:environment:${var.environment}"
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "repo:${var.github_owner}/${var.github_repo}:environment:${var.environment}"
 }
 
 resource "azurerm_role_assignment" "deploy_aks_user" {
