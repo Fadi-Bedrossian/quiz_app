@@ -35,12 +35,3 @@ variable "node_vm_size" {
   default = "Standard_DC2as_v6"
 }
 
-variable "min_nodes" {
-  type    = number
-  default = 1
-}
-
-variable "max_nodes" {
-  type    = number
-  default = 3
-}
