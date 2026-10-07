@@ -36,7 +36,7 @@ resource "azurerm_federated_identity_credential" "deploy" {
   parent_id = azurerm_user_assigned_identity.deploy.id
   audience  = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_owner}/${var.github_repo}:environment:${var.environment}"
+  subject   = "repo:${var.github_owner}@${var.github_owner_id}/${var.github_repo}@${var.github_repo_id}:environment:${var.environment}"
 }
 
 resource "azurerm_role_assignment" "deploy_aks_user" {
