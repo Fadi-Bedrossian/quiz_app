@@ -41,3 +41,9 @@ variable "node_vm_size" {
   description = "AKS system node VM size selected for the current subscription quota"
   default     = "Standard_DC2as_v6"
 }
+
+variable "ci_runner_ip" {
+  type        = string
+  description = "Temporary GitHub Actions runner CIDR allowed to manage Key Vault data-plane secrets"
+  default     = ""
+}
