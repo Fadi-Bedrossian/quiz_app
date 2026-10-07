@@ -32,7 +32,7 @@ variable "acr_id" {
 
 variable "node_vm_size" {
   type    = string
-  default = "Standard_D2as_v5"
+  default = "Standard_DC2as_v6"
 }
 
 variable "min_nodes" {
