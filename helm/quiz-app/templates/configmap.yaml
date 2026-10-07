@@ -7,7 +7,7 @@ data:
   DB_PORT: {{ .Values.postgres.port | quote }}
   DB_NAME: {{ .Values.postgres.database | quote }}
   DB_USER: {{ .Values.postgres.user | quote }}
-  DB_SSLMODE: "require"
+  DB_SSLMODE: "disable"
   ENTRA_TENANT_ID: {{ .Values.entra.tenantId | quote }}
   ENTRA_CLIENT_ID: {{ .Values.entra.clientId | quote }}
   ENTRA_AUDIENCE: {{ .Values.entra.audience | quote }}
