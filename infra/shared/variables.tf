@@ -35,3 +35,9 @@ variable "infra_client_id" {
   type        = string
   description = "Client ID of bootstrap GitHub Actions infrastructure identity"
 }
+
+variable "node_vm_size" {
+  type        = string
+  description = "AKS system node VM size selected for the current subscription quota"
+  default     = "Standard_DC2as_v6"
+}
