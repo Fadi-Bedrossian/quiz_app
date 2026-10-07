@@ -18,6 +18,8 @@ module "environment" {
   resource_group_name     = var.resource_group_name
   github_owner            = var.github_owner
   github_repo             = var.github_repo
+  github_owner_id         = var.github_owner_id
+  github_repo_id          = var.github_repo_id
   postgres_server_id      = data.terraform_remote_state.shared.outputs.postgres_server_id
   postgres_fqdn           = data.terraform_remote_state.shared.outputs.postgres_fqdn
   postgres_admin_user     = data.terraform_remote_state.shared.outputs.postgres_admin_user
