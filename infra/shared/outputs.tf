@@ -12,5 +12,3 @@ output "postgres_server_id" { value = module.database.server_id }
 output "postgres_server_name" { value = module.database.server_name }
 output "postgres_fqdn" { value = module.database.fqdn }
 output "postgres_admin_user" { value = module.database.administrator_login }
-output "frontdoor_profile_id" { value = module.frontdoor.id }
-output "frontdoor_resource_guid" { value = module.frontdoor.resource_guid }
