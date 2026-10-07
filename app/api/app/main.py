@@ -1,16 +1,25 @@
-from contextlib import asynccontextmanager
 import logging
 import time
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
 from .auth import admin_claims, current_claims
 from .config import get_settings
 from .db import Base, SessionLocal, engine, get_db
-from .models import Question
 from .logging_config import setup_logging
-from .schemas import QuestionAdmin, QuestionCreate, QuestionPublic, ResultItem, SubmitRequest, SubmitResponse
+from .models import Question
+from .schemas import (
+    QuestionAdmin,
+    QuestionCreate,
+    QuestionPublic,
+    ResultItem,
+    SubmitRequest,
+    SubmitResponse,
+)
 from .seed import SEED_QUESTIONS
 
 settings = get_settings()
@@ -39,8 +48,8 @@ async def lifespan(_: FastAPI):
         try:
             from azure.monitor.opentelemetry import configure_azure_monitor
             configure_azure_monitor(connection_string=settings.appinsights_connection_string)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            logger.exception("azure_monitor_configuration_failed")
     init_db()
     yield
 
