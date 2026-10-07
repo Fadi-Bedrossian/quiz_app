@@ -36,7 +36,7 @@ jobs:
         working-directory: app/web
       - run: npm run lint && npm run test && npm run build
         working-directory: app/web
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: helm lint helm/quiz-app
       - uses: aquasecurity/trivy-action@v0.36.0
         with: { scan-type: fs, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
