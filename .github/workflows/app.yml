@@ -72,9 +72,19 @@ jobs:
         run: az acr login --name "${{ vars.ACR_NAME }}"
       - name: Build and push images
         env: { TAG: '${{ github.sha }}' }
+        shell: bash
         run: |
+          ENV=${{ steps.env.outputs.name }}
+          AUTH_DISABLED=false
+          if [ "$ENV" = "dev" ]; then AUTH_DISABLED=true; fi
+
           docker build -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG" app/api
-          docker build --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" --build-arg VITE_ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" --build-arg VITE_ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
+          docker build \
+            --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" \
+            --build-arg VITE_ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" \
+            --build-arg VITE_ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
+            --build-arg VITE_AUTH_DISABLED="$AUTH_DISABLED" \
+            -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG"
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG"
       - uses: aquasecurity/trivy-action@v0.36.0
