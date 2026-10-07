@@ -64,6 +64,5 @@ module "aks" {
   subnet_id                  = module.network.aks_subnet_id
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   acr_id                     = module.registry.id
-  node_vm_size                = var.node_vm_size
+  node_vm_size               = var.node_vm_size
 }
-
