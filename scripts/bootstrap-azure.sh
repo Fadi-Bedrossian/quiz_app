@@ -87,9 +87,9 @@ az storage container create \
   --name "$CONTAINER" \
   --account-key "$ACCOUNT_KEY" \
   -o none
-az storage blob service-properties update \
+az storage account blob-service-properties update \
+  --resource-group "$STATE_RG" \
   --account-name "$STATE_ACCOUNT" \
-  --account-key "$ACCOUNT_KEY" \
   --enable-versioning true \
   --enable-delete-retention true \
   --delete-retention-days 7 \
