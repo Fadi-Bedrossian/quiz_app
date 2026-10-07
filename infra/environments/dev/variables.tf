@@ -40,6 +40,16 @@ variable "github_repo" {
   default = "quiz_app"
 }
 
+variable "github_owner_id" {
+  type    = string
+  default = "59285089"
+}
+
+variable "github_repo_id" {
+  type    = string
+  default = "1408354219"
+}
+
 variable "tfstate_resource_group" {
   type    = string
   default = "sg-tfstate-rg"
