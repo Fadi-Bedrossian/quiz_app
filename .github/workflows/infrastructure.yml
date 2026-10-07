@@ -85,6 +85,28 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Prepare temporary Key Vault firewall access
+        shell: bash
+        run: |
+          RUNNER_IP="$(curl -fsS https://api.ipify.org)"
+          RUNNER_CIDR="${RUNNER_IP}/32"
+          echo "TF_VAR_ci_runner_ip=$RUNNER_CIDR" >> "$GITHUB_ENV"
+          echo "CI_RUNNER_CIDR=$RUNNER_CIDR" >> "$GITHUB_ENV"
+
+          KV_NAME="$(az keyvault list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?starts_with(name, 'sg-quiz-kv-')].name | [0]" \
+            -o tsv)"
+
+          if [ -n "$KV_NAME" ]; then
+            az keyvault network-rule add \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "$KV_NAME" \
+              --ip-address "$RUNNER_CIDR" \
+              -o none
+          fi
+
+
       - name: Plan shared infrastructure
         shell: bash
         run: |
@@ -102,6 +124,23 @@ jobs:
             -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
             -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
             -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}"
+
+      - name: Remove temporary Key Vault firewall access
+        if: always() && env.CI_RUNNER_CIDR != ''
+        shell: bash
+        run: |
+          KV_NAME="$(az keyvault list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?starts_with(name, 'sg-quiz-kv-')].name | [0]" \
+            -o tsv)"
+
+          if [ -n "$KV_NAME" ]; then
+            az keyvault network-rule remove \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "$KV_NAME" \
+              --ip-address "$CI_RUNNER_CIDR" \
+              -o none || true
+          fi
 
   terraform:
     if: github.event_name == 'workflow_dispatch'
@@ -130,6 +169,28 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.8
+
+      - name: Prepare temporary Key Vault firewall access
+        shell: bash
+        run: |
+          RUNNER_IP="$(curl -fsS https://api.ipify.org)"
+          RUNNER_CIDR="${RUNNER_IP}/32"
+          echo "TF_VAR_ci_runner_ip=$RUNNER_CIDR" >> "$GITHUB_ENV"
+          echo "CI_RUNNER_CIDR=$RUNNER_CIDR" >> "$GITHUB_ENV"
+
+          KV_NAME="$(az keyvault list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?starts_with(name, 'sg-quiz-kv-')].name | [0]" \
+            -o tsv)"
+
+          if [ -n "$KV_NAME" ]; then
+            az keyvault network-rule add \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "$KV_NAME" \
+              --ip-address "$RUNNER_CIDR" \
+              -o none
+          fi
+
 
       - name: Select AKS VM size with available quota
         if: inputs.operation != 'destroy'
@@ -231,3 +292,20 @@ jobs:
             -var="tenant_id=${{ vars.AZURE_TENANT_ID }}" \
             -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}" \
             -var="tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+
+      - name: Remove temporary Key Vault firewall access
+        if: always() && env.CI_RUNNER_CIDR != ''
+        shell: bash
+        run: |
+          KV_NAME="$(az keyvault list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?starts_with(name, 'sg-quiz-kv-')].name | [0]" \
+            -o tsv)"
+
+          if [ -n "$KV_NAME" ]; then
+            az keyvault network-rule remove \
+              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+              --name "$KV_NAME" \
+              --ip-address "$CI_RUNNER_CIDR" \
+              -o none || true
+          fi
