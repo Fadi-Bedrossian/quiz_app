@@ -40,7 +40,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     name                         = "system"
     vm_size                      = var.node_vm_size
     vnet_subnet_id               = var.subnet_id
-    node_count                   = 1
+    node_count                   = 2
     os_disk_size_gb              = 64
     os_sku                       = "AzureLinux3"
     type                         = "VirtualMachineScaleSets"
