@@ -1,7 +1,9 @@
 from functools import lru_cache
+
 import jwt
 from fastapi import Depends, Header, HTTPException, status
 from jwt import PyJWKClient
+
 from .config import get_settings
 
 settings = get_settings()
