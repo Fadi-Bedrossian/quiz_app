@@ -1,4 +1,5 @@
 environment: dev
+authDisabled: false
 replicaCount:
   web: 1
   api: 1
