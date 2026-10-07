@@ -42,7 +42,8 @@ jobs:
         with: { scan-type: fs, scan-ref: '.', severity: 'HIGH,CRITICAL', exit-code: '1' }
 
   deploy:
-    if: github.event_name != 'pull_request'
+    # Keep production disabled until prod infrastructure is provisioned.
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/develop'
     needs: test
     runs-on: ubuntu-24.04
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
