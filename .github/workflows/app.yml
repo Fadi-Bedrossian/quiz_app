@@ -21,7 +21,7 @@ jobs:
       - run: pip install -e './app/api[dev]'
       - run: ruff check app/api
       - run: pytest app/api
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - run: npm install
         working-directory: app/web
