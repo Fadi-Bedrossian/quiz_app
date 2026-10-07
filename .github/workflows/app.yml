@@ -1,10 +1,10 @@
 name: Application
 on:
   pull_request:
-    paths: ['app/**', 'helm/**', '.github/workflows/app.yml']
+    paths: ['app/**', 'helm/**', 'scripts/aks-command.sh', '.github/workflows/app.yml']
   push:
     branches: [develop, main]
-    paths: ['app/**', 'helm/**', '.github/workflows/app.yml']
+    paths: ['app/**', 'helm/**', 'scripts/aks-command.sh', '.github/workflows/app.yml']
   workflow_dispatch:
     inputs:
       environment:
@@ -124,21 +124,11 @@ jobs:
           kubectl get endpoints -n "quiz-$ENV"
           EOF
 
-          RESULT="$(az aks command invoke \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AKS_NAME }}" \
-            --command "bash deploy.sh" \
-            --file . \
-            -o json)"
-
-          echo "$RESULT"
-          STATE="$(jq -r '.provisioningState // empty' <<<"$RESULT")"
-          EXIT_CODE="$(jq -r '.exitCode // empty' <<<"$RESULT")"
-
-          if [ "$STATE" != "Succeeded" ] || [ "$EXIT_CODE" != "0" ]; then
-            echo "AKS deployment command did not complete successfully: state=$STATE exitCode=$EXIT_CODE"
-            exit 1
-          fi
+          bash ../../scripts/aks-command.sh \
+            "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            "${{ vars.AKS_NAME }}" \
+            "bash deploy.sh" \
+            "."
 
       - name: Smoke test API through web proxy
         shell: bash
@@ -152,8 +142,9 @@ jobs:
         run: |
           ENV=${{ steps.env.outputs.name }}
 
-          az aks command invoke \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AKS_NAME }}" \
-            --command "kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api describe ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true" \
-            -o json || true
+          DIAG_COMMAND="kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api describe ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true"
+
+          bash scripts/aks-command.sh \
+            "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            "${{ vars.AKS_NAME }}" \
+            "$DIAG_COMMAND" || true
