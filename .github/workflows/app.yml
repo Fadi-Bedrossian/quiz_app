@@ -83,7 +83,7 @@ jobs:
             --set image.web.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-web" \
             --set image.api.tag="${{ github.sha }}" --set image.web.tag="${{ github.sha }}" \
             --set service.publicIpName="${{ vars.PUBLIC_IP_NAME }}" --set service.publicIpResourceGroup="${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" --set frontDoorId="${{ vars.FRONT_DOOR_ID }}" \
+            --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
             --wait --timeout 10m
