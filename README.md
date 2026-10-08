@@ -2,6 +2,14 @@
 
 Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, Traefik, cert-manager, and Let's Encrypt.
 
+## Wiki / operational runbooks
+
+- [Architecture wiki](wiki/Architecture.md)
+- [Destroy and rebuild guide](wiki/Rebuild-Guide.md)
+- [Wiki home](wiki/Home.md)
+
+The rebuild guide contains the exact order for a full destroy/reapply: bootstrap state and OIDC, apply shared/dev/prod infrastructure, refresh GitHub Environment variables, configure Entra if production authentication is enabled, then deploy the application to dev and finally prod.
+
 ## Architecture
 
 ```mermaid
