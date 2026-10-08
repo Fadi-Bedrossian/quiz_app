@@ -1,0 +1,167 @@
+name: Observability
+
+on:
+  pull_request:
+    paths:
+      - 'observability/**'
+      - '.github/workflows/observability.yml'
+      - 'app/api/**'
+      - 'helm/quiz-app/templates/api.yaml'
+      - 'helm/quiz-app/templates/configmap.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'observability/**'
+      - '.github/workflows/observability.yml'
+      - 'app/api/**'
+      - 'helm/quiz-app/templates/api.yaml'
+      - 'helm/quiz-app/templates/configmap.yaml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate observability YAML and dashboard JSON
+        shell: bash
+        run: |
+          python -m pip install --quiet pyyaml
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import yaml
+
+          for path in Path("observability").glob("*.yaml"):
+              with path.open(encoding="utf-8") as handle:
+                  list(yaml.safe_load_all(handle))
+
+          with Path("observability/grafana/quiz-observability-dashboard.json").open(encoding="utf-8") as handle:
+              json.load(handle)
+          PY
+      - uses: azure/setup-helm@v4
+      - name: Render pinned upstream Helm charts
+        shell: bash
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add sloth https://slok.github.io/sloth
+          helm repo update
+          helm template monitoring prometheus-community/kube-prometheus-stack \
+            --version 91.8.2 \
+            -n observability \
+            -f observability/kube-prometheus-stack-values.yaml >/dev/null
+          helm template sloth sloth/sloth \
+            --version 0.16.0 \
+            -n observability \
+            --include-crds \
+            --set commonPlugins.enabled=false \
+            --set sloth.defaultSloPeriod=30d >/dev/null
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: prod
+    concurrency:
+      group: observability-cluster
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Prometheus, Grafana, Sloth, Loki and Fluent Bit
+        shell: bash
+        run: |
+          cd observability
+
+          cat > deploy-observability.sh <<'EOF'
+          set -euo pipefail
+
+          NAMESPACE=observability
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+          if ! kubectl get secret grafana-admin -n "$NAMESPACE" >/dev/null 2>&1; then
+            GRAFANA_PASSWORD="$(openssl rand -base64 32 | tr -d '\n')"
+            kubectl create secret generic grafana-admin -n "$NAMESPACE" \
+              --from-literal=admin-user=admin \
+              --from-literal=admin-password="$GRAFANA_PASSWORD"
+          fi
+
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+          helm repo add sloth https://slok.github.io/sloth --force-update
+          helm repo update
+
+          helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+            --version 91.8.2 \
+            -n "$NAMESPACE" \
+            -f kube-prometheus-stack-values.yaml \
+            --wait --timeout 10m
+
+          kubectl apply -f loki.yaml
+          kubectl rollout status deployment/loki -n "$NAMESPACE" --timeout=180s
+
+          kubectl apply -f fluent-bit.yaml
+          kubectl rollout status daemonset/fluent-bit -n "$NAMESPACE" --timeout=180s
+
+          helm upgrade --install sloth sloth/sloth \
+            --version 0.16.0 \
+            -n "$NAMESPACE" \
+            --set commonPlugins.enabled=false \
+            --set sloth.defaultSloPeriod=30d \
+            --wait --timeout 3m
+
+          kubectl wait --for=condition=Established \
+            crd/prometheusservicelevels.sloth.slok.dev \
+            --timeout=60s
+
+          kubectl apply -f service-monitors.yaml
+          kubectl apply -f sloth-slos.yaml
+
+          kubectl create configmap quiz-observability-dashboard \
+            -n "$NAMESPACE" \
+            --from-file=quiz-observability-dashboard.json=grafana/quiz-observability-dashboard.json \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label configmap quiz-observability-dashboard \
+            -n "$NAMESPACE" grafana_dashboard=1 --overwrite
+
+          sleep 10
+
+          echo "--- observability pods ---"
+          kubectl get pods -n "$NAMESPACE" -o wide
+          echo "--- service monitors ---"
+          kubectl get servicemonitors -n "$NAMESPACE"
+          echo "--- Sloth SLOs ---"
+          kubectl get prometheusservicelevels -n "$NAMESPACE"
+          echo "--- generated Quiz SLO rules ---"
+          kubectl get prometheusrules -n "$NAMESPACE" | grep quiz-api || true
+          echo "--- storage ---"
+          kubectl get pvc -n "$NAMESPACE"
+          echo "Grafana is internal at service monitoring-grafana in namespace observability."
+          EOF
+
+          bash ../scripts/aks-command.sh \
+            "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            "${{ vars.AKS_NAME }}" \
+            "bash deploy-observability.sh" \
+            "."
+
+      - name: Collect observability diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          DIAG_COMMAND="kubectl get pods,pvc,svc -n observability -o wide; echo '--- service monitors ---'; kubectl get servicemonitors -n observability || true; echo '--- sloth ---'; kubectl get prometheusservicelevels,prometheusrules -n observability || true; kubectl logs -n observability deploy/sloth --tail=120 || true; echo '--- loki ---'; kubectl logs -n observability deploy/loki --tail=120 || true; echo '--- fluent-bit ---'; kubectl logs -n observability ds/fluent-bit --tail=120 || true"
+          bash scripts/aks-command.sh \
+            "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            "${{ vars.AKS_NAME }}" \
+            "$DIAG_COMMAND" || true

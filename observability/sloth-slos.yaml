@@ -1,0 +1,139 @@
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: quiz-api-dev
+  namespace: observability
+spec:
+  service: "quiz-api-dev"
+  labels:
+    owner: "platform"
+    repo: "Fadi-Bedrossian/quiz_app"
+    environment: "dev"
+  slos:
+    - name: "availability"
+      objective: 99.9
+      description: "Internal SLO: at least 99.9% of non-health HTTP requests avoid 5xx responses over 30 days."
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_requests_total{environment="dev",status_code=~"5..",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_requests_total{environment="dev",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiDevAvailabilityBurn
+        labels:
+          category: availability
+          environment: "dev"
+        annotations:
+          summary: "Quiz API dev availability error budget is burning too quickly."
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: "latency"
+      objective: 95
+      description: "Internal latency SLO: at least 95% of non-health HTTP requests complete within 500 ms over 30 days."
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_request_duration_seconds_count{environment="dev",route!="/metrics",route!="/api/healthz"}[{{.window}}])) - sum(rate(quiz_http_request_duration_seconds_bucket{environment="dev",route!="/metrics",route!="/api/healthz",le="0.5"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_request_duration_seconds_count{environment="dev",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiDevLatencyBurn
+        labels:
+          category: latency
+          environment: "dev"
+        annotations:
+          summary: "Quiz API dev latency error budget is burning too quickly."
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: "availability-sla"
+      objective: 99.5
+      description: "Operational SLA guardrail: 99.5% request availability over the same 30-day measurement window."
+      labels:
+        service_level_type: sla
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_requests_total{environment="dev",status_code=~"5..",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_requests_total{environment="dev",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiDevSlaGuardrail
+        pageAlert:
+          disable: true
+        ticketAlert:
+          disable: true
+---
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: quiz-api-prod
+  namespace: observability
+spec:
+  service: "quiz-api-prod"
+  labels:
+    owner: "platform"
+    repo: "Fadi-Bedrossian/quiz_app"
+    environment: "prod"
+  slos:
+    - name: "availability"
+      objective: 99.9
+      description: "Internal SLO: at least 99.9% of non-health HTTP requests avoid 5xx responses over 30 days."
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_requests_total{environment="prod",status_code=~"5..",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_requests_total{environment="prod",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiProdAvailabilityBurn
+        labels:
+          category: availability
+          environment: "prod"
+        annotations:
+          summary: "Quiz API prod availability error budget is burning too quickly."
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: "latency"
+      objective: 95
+      description: "Internal latency SLO: at least 95% of non-health HTTP requests complete within 500 ms over 30 days."
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_request_duration_seconds_count{environment="prod",route!="/metrics",route!="/api/healthz"}[{{.window}}])) - sum(rate(quiz_http_request_duration_seconds_bucket{environment="prod",route!="/metrics",route!="/api/healthz",le="0.5"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_request_duration_seconds_count{environment="prod",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiProdLatencyBurn
+        labels:
+          category: latency
+          environment: "prod"
+        annotations:
+          summary: "Quiz API prod latency error budget is burning too quickly."
+        pageAlert:
+          labels:
+            severity: critical
+        ticketAlert:
+          labels:
+            severity: warning
+
+    - name: "availability-sla"
+      objective: 99.5
+      description: "Operational SLA guardrail: 99.5% request availability over the same 30-day measurement window."
+      labels:
+        service_level_type: sla
+      sli:
+        events:
+          errorQuery: 'sum(rate(quiz_http_requests_total{environment="prod",status_code=~"5..",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+          totalQuery: 'sum(rate(quiz_http_requests_total{environment="prod",route!="/metrics",route!="/api/healthz"}[{{.window}}]))'
+      alerting:
+        name: QuizApiProdSlaGuardrail
+        pageAlert:
+          disable: true
+        ticketAlert:
+          disable: true

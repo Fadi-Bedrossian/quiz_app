@@ -6,6 +6,10 @@ from app.main import app
 def test_health_and_quiz_flow():
     with TestClient(app) as client:
         assert client.get("/api/healthz").status_code == 200
+        metrics = client.get("/metrics")
+        assert metrics.status_code == 200
+        assert "quiz_http_requests_total" in metrics.text
+        assert "quiz_http_request_duration_seconds_bucket" in metrics.text
         questions = client.get("/api/questions").json()
         assert len(questions) == 20
         assert "correct_index" not in questions[0]

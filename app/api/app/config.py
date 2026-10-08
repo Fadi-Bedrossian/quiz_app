@@ -15,6 +15,7 @@ def _read_secret_file(path: str) -> str:
 
 class Settings(BaseSettings):
     app_name: str = "quiz-api"
+    app_environment: str = "local"
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "quiz"

@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: quiz-api-config
 data:
+  APP_ENVIRONMENT: {{ .Values.environment | quote }}
   DB_HOST: {{ .Values.postgres.host | quote }}
   DB_PORT: {{ .Values.postgres.port | quote }}
   DB_NAME: {{ .Values.postgres.database | quote }}
