@@ -42,13 +42,6 @@ module "registry" {
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
-module "frontdoor" {
-  source              = "../modules/frontdoor"
-  prefix              = var.prefix
-  suffix              = random_string.suffix.result
-  resource_group_name = data.azurerm_resource_group.main.name
-}
-
 module "key_vault" {
   source                        = "../modules/key-vault"
   prefix                        = var.prefix
