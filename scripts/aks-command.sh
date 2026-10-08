@@ -42,14 +42,14 @@ fi
 
 echo "AKS command id: $COMMAND_ID"
 
-for attempt in $(seq 1 72); do
+for attempt in $(seq 1 180); do
   set +e
   RESULT="$(az aks command result     --resource-group "$RESOURCE_GROUP"     --name "$AKS_NAME"     --command-id "$COMMAND_ID"     -o json 2>/tmp/aks-command-result.err)"
   rc=$?
   set -e
 
   if [[ $rc -ne 0 ]]; then
-    if [[ $attempt -eq 72 ]]; then
+    if [[ $attempt -eq 180 ]]; then
       cat /tmp/aks-command-result.err >&2 || true
       echo "Timed out fetching AKS command result." >&2
       exit 1
@@ -61,7 +61,7 @@ for attempt in $(seq 1 72); do
   if ! jq -e . >/dev/null 2>&1 <<<"$RESULT"; then
     echo "Unexpected AKS command result:"
     echo "$RESULT"
-    if [[ $attempt -eq 72 ]]; then
+    if [[ $attempt -eq 180 ]]; then
       exit 1
     fi
     sleep 5
