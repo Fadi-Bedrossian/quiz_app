@@ -1,31 +1,70 @@
 # Terraform state management
 
-The repository intentionally uses three independent remote Terraform state blobs in one Azure Storage container:
+The repository uses three independent remote Terraform state blobs in one Azure Storage container.
 
 | Root | State key | Owns |
 |---|---|---|
-| `infra/shared` | `shared.tfstate` | AKS, VNet, ACR, Key Vault, PostgreSQL server, monitoring and Front Door profile |
-| `infra/environments/dev` | `dev.tfstate` | Dev database, identities/RBAC, public IP and Front Door route |
-| `infra/environments/prod` | `prod.tfstate` | Prod database, identities/RBAC, public IP and Front Door route |
+| `infra/shared` | `shared.tfstate` | VNet/subnet, AKS, ACR, Key Vault, Log Analytics, Application Insights, shared secrets/integration |
+| `infra/environments/dev` | `dev.tfstate` | Dev identities/RBAC, Workload Identity federation, dev Public IP/DNS |
+| `infra/environments/prod` | `prod.tfstate` | Prod identities/RBAC, Workload Identity federation, prod Public IP/DNS |
 
-The environment roots consume outputs from `shared.tfstate` through `terraform_remote_state`; they do not own or rewrite shared resources.
+The environment roots consume outputs from `shared.tfstate` through `terraform_remote_state`; they do not own or rewrite shared AKS/ACR/Key Vault resources.
+
+The Kubernetes observability stack is **not** a fourth Terraform state. Prometheus, Grafana, Loki, Fluent Bit and Sloth are deployed by `.github/workflows/observability.yml` into the existing AKS cluster.
+
+Grafana also does not own a separate Terraform Public IP. It reuses the prod Public IP/Traefik endpoint at `/grafana`.
 
 ## Locking
 
-The `azurerm` backend stores state in Azure Blob Storage, whose backend locking is based on a blob lease. Terraform acquires that lock before state-changing operations. All plan/apply/destroy commands in this repo add `-lock-timeout=5m`, so a second run waits for a legitimate lock rather than immediately failing.
+The `azurerm` backend stores state in Azure Blob Storage. Terraform uses a blob lease for state locking.
 
-GitHub Actions adds another layer with concurrency groups:
+All Terraform plan/apply/destroy commands use `-lock-timeout=5m`, so a second process waits for a legitimate lock instead of immediately failing.
 
-- `terraform-dev` serializes dev writes.
-- `terraform-shared-prod` serializes shared/prod writes because prod depends on shared resources.
-- PR plans can run concurrently across PRs, but the backend lease still protects each state blob.
+The Infrastructure workflow also uses the `terraform-infrastructure` GitHub Actions concurrency group for manual state-changing operations.
 
 Do not use `-lock=false` in CI. Do not force-unlock until you have verified there is no live Terraform process holding the lease.
 
-## Authentication
+## Backend authentication
 
-The backend is bootstrapped once by `scripts/bootstrap-azure.sh`. Ongoing access uses Microsoft Entra ID and GitHub OIDC (`use_oidc=true`, `use_azuread_auth=true`) rather than a storage account key. Shared-key access is disabled after bootstrap.
+The backend is bootstrapped by `scripts/bootstrap-azure.sh`.
+
+Ongoing access uses Microsoft Entra ID and GitHub OIDC:
+
+```text
+use_oidc=true
+use_azuread_auth=true
+```
+
+No storage-account key or long-lived Azure client secret is required for normal GitHub Actions execution.
+
+This Microsoft Entra/OIDC usage is infrastructure authentication. The quiz application itself currently has no end-user authentication layer.
+
+## Dependency order
+
+```text
+bootstrap backend
+    ↓
+shared resources
+    ↓
+dev/prod environment resources
+    ↓
+application deployments
+    ↓
+shared Kubernetes observability deployment
+```
+
+The Infrastructure workflow ensures the shared root is initialized/validated before applying the selected environment.
 
 ## Destruction order
 
-Destroy `prod.tfstate` and `dev.tfstate` before `shared.tfstate`. The manual workflow requires `confirm_destroy=true` and serializes destructive runs with the same concurrency groups as applies.
+For a complete teardown:
+
+1. Remove Kubernetes ingress/Helm workloads that are using Terraform-managed Public IPs.
+2. Destroy `prod.tfstate`.
+3. Destroy `dev.tfstate`.
+4. Destroy `shared.tfstate`.
+5. Delete the bootstrap state/resource groups only after all Terraform states are gone.
+
+The observability namespace can be removed before shared AKS destruction, but it has no separate Public IP or Terraform state.
+
+See [`wiki/Rebuild-Guide.md`](../wiki/Rebuild-Guide.md) for exact commands.

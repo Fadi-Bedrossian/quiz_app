@@ -1,280 +1,253 @@
 # quiz_app
 
-Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, Traefik, cert-manager, and Let's Encrypt.
+Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Azure Key Vault, PostgreSQL on AKS, ACR, Traefik, cert-manager, Let's Encrypt, Prometheus, Grafana, Loki, Fluent Bit, Sloth, Log Analytics, and Application Insights.
 
-## Wiki / operational runbooks
+## Documentation
 
-- [Architecture wiki](wiki/Architecture.md)
-- [Destroy and rebuild guide](wiki/Rebuild-Guide.md)
 - [Wiki home](wiki/Home.md)
+- [Architecture](wiki/Architecture.md)
+- [Destroy and rebuild guide](wiki/Rebuild-Guide.md)
+- [Observability guide](observability/README.md)
+- [Terraform state management](docs/state-management.md)
 
-The rebuild guide contains the exact order for a full destroy/reapply: bootstrap state and OIDC, apply shared/dev/prod infrastructure, refresh GitHub Environment variables, configure Entra for admin access, then deploy the application to dev and finally prod.
+## Current architecture
 
-## Architecture
+The project uses one shared AKS cluster with separate dev/prod application namespaces plus a shared observability namespace.
 
 ```mermaid
-flowchart LR
-  U[Browser] -->|HTTPS| LB[Azure Public IP / AKS Load Balancer]
-  LB --> TR[Traefik Ingress]
-  CM[cert-manager + Let's Encrypt] -->|TLS certificate| TR
-  TR --> FE[React + NGINX]
-  FE -->|/api| API[FastAPI]
-  API --> PG[(PostgreSQL StatefulSet + Azure Disk)]
-  API --> KV[Key Vault via Workload Identity + CSI]
-  AKS[AKS - shared cluster] --> TR
-  AKS --> FE
-  AKS --> API
-  ACR[Azure Container Registry] --> AKS
-  MON[Log Analytics + App Insights] --> AKS
-  GH[GitHub Actions OIDC] --> AZ[Azure]
+flowchart TB
+  U[Browser]
+
+  U -->|HTTPS| DPIP[Dev Public IP]
+  U -->|HTTPS| PPIP[Prod Public IP]
+
+  DPIP --> DTR[traefik-dev] --> DWEB[quiz-dev web] --> DAPI[quiz-dev API]
+  PPIP --> PTR[traefik-prod] --> PWEB[quiz-prod web] --> PAPI[quiz-prod API]
+
+  PPIP -->|/grafana| PTR --> G[Grafana]
+
+  DAPI --> DPG[(Dev PostgreSQL)]
+  PAPI --> PPG[(Prod PostgreSQL)]
+
+  DAPI -->|/metrics| PROM[Prometheus]
+  PAPI -->|/metrics| PROM
+  FB[Fluent Bit] --> LOKI[Loki]
+  PROM --> G
+  LOKI --> G
+  SLOTH[Sloth] --> PROM
+
+  CM[cert-manager + Let's Encrypt] --> DTR
+  CM --> PTR
 ```
 
-The cluster is shared to reduce cost, while `dev` and `prod` are isolated with separate namespaces, workload identities, PostgreSQL StatefulSets/PVCs, static public IP/DNS names, Traefik releases, TLS certificates, Helm releases, GitHub Environments, and Terraform state files.
+The cluster is shared for cost efficiency, while dev and prod have separate namespaces, workload identities, PostgreSQL StatefulSets/PVCs, Public IP/DNS names, Traefik releases, TLS certificates, Helm releases, GitHub Environments, and Terraform state files.
 
-## Terraform state and locking
+## Application access model
 
-The remote backend is Azure Blob Storage. Azure Blob state locking uses blob leases automatically. The repository deliberately separates state into:
+The application currently has **no end-user authentication layer**.
 
-- `shared.tfstate` — VNet, AKS, ACR, Key Vault and monitoring.
-- `dev.tfstate` — dev identity/federation and static public IP/DNS hostname.
-- `prod.tfstate` — prod identity/federation and static public IP/DNS hostname.
+Both dev and prod expose over HTTPS:
 
-GitHub Actions also uses concurrency groups per Terraform root and all Terraform commands use `-lock-timeout=5m` so parallel applies cannot race a locked state.
+- quiz UI and quiz API
+- health endpoint
+- Admin UI
+- `/api/admin/*` CRUD endpoints
 
-> The backend itself is created by `scripts/bootstrap-azure.sh` before Terraform can use it. This avoids the circular problem of trying to store Terraform state in a storage account that Terraform has not created yet.
+The Admin API is intentionally public in the current lab/demo design.
 
-See [`docs/state-management.md`](docs/state-management.md) for the locking, concurrency and destroy-order details.
+Microsoft Entra/OIDC is still used for infrastructure identities:
+
+- GitHub Actions -> Azure
+- Terraform/backend access
+- AKS deployment identities
+- AKS Workload Identity -> Key Vault
+
+Those infrastructure identities are separate from application-user authentication.
+
+## Terraform state
+
+The Azure Blob backend uses three independent state blobs:
+
+- `shared.tfstate` — network, AKS, ACR, Key Vault, Log Analytics, Application Insights, and shared integration
+- `dev.tfstate` — dev identities/RBAC and dev Public IP/DNS
+- `prod.tfstate` — prod identities/RBAC and prod Public IP/DNS
+
+There is no separate observability Terraform state or monitoring Public IP.
 
 ## Repository layout
 
 ```text
 .
 ├── .github/workflows/
+│   ├── infrastructure.yml
 │   ├── app.yml
-│   └── infrastructure.yml
+│   └── observability.yml
 ├── app/
 │   ├── api/
 │   └── web/
 ├── helm/quiz-app/
 ├── infra/
-│   ├── modules/{network,aks,registry,key-vault,monitoring,environment}/
+│   ├── modules/
 │   ├── shared/
 │   └── environments/{dev,prod}/
-├── scripts/
-│   ├── bootstrap-azure.sh
-│   ├── configure-entra.sh
-│   ├── configure-github.sh
-│   └── repo-check.py
+├── observability/
+│   ├── kube-prometheus-stack-values.yaml
+│   ├── service-monitors.yaml
+│   ├── sloth-slos.yaml
+│   ├── loki.yaml
+│   ├── fluent-bit.yaml
+│   └── grafana/
+├── wiki/
 ├── docs/
-├── docker-compose.yml
+├── scripts/
 └── Makefile
 ```
 
-## Prerequisites
+## Deployment order
 
-Install Azure CLI, Terraform >= 1.8, Docker, kubectl, Helm >= 3.15, Python >= 3.12 and Node.js >= 20. You also need an Azure subscription and permission to create resource groups, role assignments and managed identities.
-
-## 1. Bootstrap Azure state + GitHub OIDC
-
-Login and select the subscription, then run:
-
-```bash
-az login
-az account set --subscription <SUBSCRIPTION_ID>
-export AZURE_SUBSCRIPTION_ID=<SUBSCRIPTION_ID>
-export AZURE_TENANT_ID=<TENANT_ID>
-export GITHUB_OWNER=Fadi-Bedrossian
-export GITHUB_REPO=quiz_app
-export AZURE_LOCATION=northeurope
-./scripts/bootstrap-azure.sh
-```
-
-The script creates:
-
-- `sg-tfstate-rg`
-- a deterministic globally unique storage account name derived from the subscription ID
-- blob container `tfstate`
-- `sg-quiz-rg`
-- user-assigned identity `sg-gha-terraform`
-- OIDC federation for GitHub pull requests, `dev` environment and `prod` environment
-- least practical bootstrap roles: Contributor + User Access Administrator on `sg-quiz-rg`, and Storage Blob Data Contributor on the state storage account
-
-It prints the GitHub repository variables to configure.
-
-## 2. GitHub variables and environments
-
-Create GitHub Environments named `dev` and `prod`. Add required reviewers to `prod`.
-
-Repository variables:
+For a fresh deployment:
 
 ```text
-AZURE_SUBSCRIPTION_ID
-AZURE_TENANT_ID
-AZURE_INFRA_CLIENT_ID
-TFSTATE_RESOURCE_GROUP=sg-tfstate-rg
-TFSTATE_STORAGE_ACCOUNT=<printed by bootstrap script>
-TFSTATE_CONTAINER=tfstate
-AZURE_RESOURCE_GROUP=sg-quiz-rg
-AKS_NAME=sg-quiz-aks
-ACR_NAME=<terraform shared output>
+bootstrap Azure state/OIDC
+        ↓
+Infrastructure: dev apply
+        ↓
+Infrastructure: prod apply
+        ↓
+refresh dev/prod GitHub Environment variables
+        ↓
+Application: dev
+        ↓
+Application: prod
+        ↓
+Observability: run once
+        ↓
+validate Grafana dev + prod
 ```
 
-Environment variables added by Terraform output after each environment apply:
+The Observability workflow uses the existing `prod` GitHub Environment for Azure deployment credentials/approval, but the monitoring stack itself is shared and monitors both environments.
+
+## CI/CD
+
+### Infrastructure
+
+`.github/workflows/infrastructure.yml` validates/scans Terraform and manually plans/applies/destroys the selected environment. Shared infrastructure is initialized/checked as part of the workflow.
+
+Authentication to Azure uses GitHub OIDC, not a client secret.
+
+### Application
+
+`.github/workflows/app.yml` performs tests, builds/scans images, pushes SHA-tagged images to ACR, deploys through AKS Run Command, and verifies HTTPS.
+
+Deployment mapping:
 
 ```text
-AZURE_DEPLOY_CLIENT_ID
-PUBLIC_URL
-PUBLIC_HOSTNAME
-PUBLIC_IP_NAME
-KEY_VAULT_NAME
-WORKLOAD_IDENTITY_CLIENT_ID
-POSTGRES_HOST
-POSTGRES_DATABASE
-POSTGRES_ADMIN_USER
+pull request          -> tests
+push develop          -> deploy dev
+push main             -> tests only
+workflow_dispatch     -> deploy selected dev or prod
 ```
 
-For a simple setup you can store environment-specific values as GitHub Environment variables under `dev` and `prod`. After Terraform has been applied locally, `scripts/configure-github.sh` can populate those environment variables automatically using the GitHub CLI.
+### Observability
 
-## 3. Terraform locally
+`.github/workflows/observability.yml` deploys one shared stack:
 
-The bootstrap script prints the state storage account. Export it:
+- Prometheus + Prometheus Operator
+- Grafana
+- Alertmanager
+- kube-state-metrics
+- node-exporter
+- Sloth
+- Loki
+- Fluent Bit
+- Quiz application dashboard
 
-```bash
-export TFSTATE_RESOURCE_GROUP=sg-tfstate-rg
-export TFSTATE_STORAGE_ACCOUNT=<name>
-export TFSTATE_CONTAINER=tfstate
-export ARM_SUBSCRIPTION_ID=<SUBSCRIPTION_ID>
-export ARM_TENANT_ID=<TENANT_ID>
-```
+Prometheus scrapes the dev and prod Quiz APIs at `/metrics`.
 
-Initialize and apply shared infrastructure:
+## Grafana
 
-```bash
-make tf-init-shared
-make tf-plan-shared
-make tf-apply-shared
-```
-
-Then dev and prod:
-
-```bash
-make tf-init-dev
-make tf-apply-dev
-make tf-init-prod
-make tf-apply-prod
-```
-
-Destroy in reverse order:
-
-```bash
-make tf-destroy-prod
-make tf-destroy-dev
-make tf-destroy-shared
-```
-
-## 4. Local development
-
-The local stack uses PostgreSQL in Docker:
-
-```bash
-docker compose up --build
-```
-
-Open `http://localhost:8080`.
-
-API docs: `http://localhost:8000/docs`.
-
-## 5. CI/CD
-
-### Infrastructure pipeline
-
-`.github/workflows/infrastructure.yml`
-
-- PR: fmt, validate, tfsec/checkov-style Trivy config scan, plans for shared/dev/prod.
-- Manual `workflow_dispatch` plans/applies the selected `dev` or `prod` environment after shared infrastructure is checked/applied.
-- OIDC only; no Azure client secret.
-- Azure Blob remote locking + `-lock-timeout=5m`.
-- GitHub Actions concurrency groups prevent same-state races.
-- `prod` environment provides manual approval when required reviewers are configured.
-- Manual `workflow_dispatch` supports targeted `dev`, `prod`, or `shared` destruction; destroy environment states before shared.
-
-### Application pipeline
-
-`.github/workflows/app.yml`
-
-- lint and tests
-- Docker build
-- Trivy filesystem/image scan
-- push to ACR using commit SHA tags
-- AKS authentication via OIDC + kubelogin
-- Helm deployment
-- rollout verification
-- HTTPS smoke test through Traefik using the Let's Encrypt certificate
-
-Application deployment mapping:
+Grafana is the only public observability UI and reuses the existing production endpoint:
 
 ```text
-push develop        -> dev
-push main           -> tests only
-manual workflow run -> selected dev or prod environment
+https://<prod-hostname>/grafana
 ```
 
-## Kubernetes / Helm
+Username:
 
-The chart includes:
+```text
+admin
+```
 
-- frontend and API Deployments
-- ClusterIP API Service
-- internal `ClusterIP` frontend Service behind an environment-specific Traefik ingress controller
-- static Terraform-managed Azure Public IP bound to Traefik
-- cert-manager `Issuer` and `Certificate` resources using Let's Encrypt HTTP-01
-- separate namespace per environment
-- API ServiceAccount using AKS Workload Identity
-- ConfigMap for non-secret API runtime configuration
-- Secrets Store CSI `SecretProviderClass` backed by Key Vault
-- readiness/liveness/startup probes
-- requests/limits
-- HPA
-- PodDisruptionBudget
-- rolling updates
-- non-root API security context
-
-Useful commands:
+Retrieve the generated password:
 
 ```bash
-kubectl get pods -n quiz-dev
-kubectl get pods -n quiz-prod
-helm list -A
-kubectl logs -n quiz-dev deploy/quiz-dev-api
+az aks command invoke \
+  -g sg-quiz-rg \
+  -n sg-quiz-aks \
+  --command "kubectl -n observability get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo"
 ```
 
-## Application behavior
+Open **Dashboards -> Browse -> Quiz App - Application, Golden Signals, SLOs & Logs**.
 
-The seed contains 20 easy science questions. The normal quiz is public over HTTPS and does not require sign-in. The API does not return correct answers with the question list; answers are scored server-side and explanations are returned only after submission. The Admin screen signs in with Microsoft Entra, and only `/api/admin/*` requires a bearer token with the delegated `Quiz.Access` scope.
+Direct dashboard URL:
+
+```text
+https://<prod-hostname>/grafana/d/quiz-observability
+```
+
+Use the dashboard **Environment** selector to switch between dev and prod.
+
+Prometheus, Loki, Alertmanager, and Sloth remain internal.
+
+## Observability targets
+
+The shared stack provides:
+
+- latency: p50/p95/p99
+- traffic: requests/sec and traffic by route
+- errors: 5xx ratio and SLO burn rate
+- saturation: application CPU/memory versus resource limits
+- pod restarts
+- quiz submission metrics
+- application and infrastructure logs
+- Sloth SLO/error-budget information
+
+Current SLOs per environment:
+
+- availability: 99.9%
+- latency: 95% of non-health requests within 500 ms
+- operational availability guardrail: 99.5%
+
+Prometheus and Loki retain seven days of data with 10 Gi Azure Disk storage each.
+
+## AKS API access
+
+The AKS API server is deliberately restricted. Direct `kubectl` from a workstation or Cloud Shell may time out if its public IP is not authorized.
+
+Operational commands and GitHub deployments therefore use:
+
+```text
+az aks command invoke
+```
+
+This allows cluster operations without making the Kubernetes API broadly reachable.
 
 ## Security notes
 
-- No Azure client secrets are committed.
-- GitHub Actions uses OIDC federation.
-- Pods access Key Vault via Workload Identity.
-- PostgreSQL runs as a single-replica StatefulSet on AKS with an Azure Disk PVC and is exposed only through an internal ClusterIP service.
-- ACR image pulls use the AKS kubelet managed identity.
-- Terraform state is remote, locked, encrypted by Azure Storage and separated by shared/dev/prod roots. State can contain sensitive values, so state-container RBAC must remain restricted.
-- Production approval is implemented with a GitHub Environment.
-- Traefik terminates public HTTPS using a certificate issued by Let's Encrypt through cert-manager. Each environment reuses its Terraform-managed Azure Public IP and `*.cloudapp.azure.com` hostname.
-- Public quiz endpoints remain anonymous; admin CRUD endpoints require Microsoft Entra authentication. `ADMIN_GROUP_ID` is optional and, when set, further restricts admin access to that security group.
+- GitHub Actions uses OIDC federation; no Azure client secret is required.
+- Pods access Key Vault through AKS Workload Identity.
+- PostgreSQL is internal-only and backed by an Azure Disk PVC.
+- ACR image pulls use AKS identity.
+- Terraform state is remote, encrypted, locked, and split into shared/dev/prod roots.
+- Traefik terminates public HTTPS with Let's Encrypt certificates from cert-manager.
+- Grafana requires its own admin username/password.
+- Prometheus, Loki, Alertmanager, and Sloth are not publicly exposed.
+- Application quiz and Admin endpoints are intentionally anonymous in the current design.
 
 ## Cost considerations
 
-This repo prioritizes low cost but is still real Azure infrastructure. Traefik, cert-manager and Let's Encrypt do not add an Azure service fee; main recurring costs are AKS nodes, Log Analytics ingestion, Azure Disk storage and public IPs. The AKS system pool uses cluster autoscaling with 2–3 nodes and the registry uses Basic ACR. Review Azure pricing before applying.
+This repository prioritizes a lab/demo cost profile but still uses real Azure resources. Main recurring costs include AKS nodes, Log Analytics ingestion, Azure Disk storage, and the dev/prod Public IPs.
 
-## Troubleshooting
+Grafana reuses the prod Public IP, specifically to avoid creating a third application/monitoring ingress endpoint and unnecessary Public IP quota/cost.
 
-**Terraform says state is locked** — another process may own the blob lease. Do not manually break a lock unless you have verified no Terraform process is active. The workflows wait up to 5 minutes.
-
-**OIDC login fails** — verify the GitHub Environment name matches the federated subject (`dev` or `prod`) and `AZURE_INFRA_CLIENT_ID`/`AZURE_DEPLOY_CLIENT_ID` are correct.
-
-**Pods cannot read Key Vault** — verify the ServiceAccount client ID, federated identity subject `system:serviceaccount:<namespace>:quiz-api`, and `Key Vault Secrets User` role.
-
-**HTTPS/certificate fails** — check `kubectl get ingress,issuer,certificate,order,challenge -n quiz-<env>`, verify the Traefik LoadBalancer owns the Terraform-managed public IP, and confirm the `*.cloudapp.azure.com` hostname resolves to that IP.
-
+See the [Rebuild Guide](wiki/Rebuild-Guide.md) for the complete operational sequence.
