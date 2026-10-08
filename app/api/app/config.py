@@ -26,9 +26,6 @@ class Settings(BaseSettings):
     database_url_override: str = ""
     appinsights_connection_string: str = ""
     appinsights_connection_string_file: str = "/mnt/secrets-store/appinsights-connection-string"
-    entra_tenant_id: str = ""
-    entra_audience: str = ""
-    admin_group_id: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     def model_post_init(self, context: Any, /) -> None:
