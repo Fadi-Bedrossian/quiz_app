@@ -1,33 +1,35 @@
 # quiz_app
 
-Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Microsoft Entra ID, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, and Azure Front Door Standard.
+Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Microsoft Entra ID, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, Traefik, cert-manager, and Let's Encrypt.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  U[Browser] -->|HTTPS| AFD[Azure Front Door Standard]
-  AFD -->|HTTP origin| LB[AKS Public Load Balancer IP]
-  LB --> FE[React + NGINX]
+  U[Browser] -->|HTTPS| LB[Azure Public IP / AKS Load Balancer]
+  LB --> TR[Traefik Ingress]
+  CM[cert-manager + Let's Encrypt] -->|TLS certificate| TR
+  TR --> FE[React + NGINX]
   FE -->|/api| API[FastAPI]
   API --> PG[(PostgreSQL StatefulSet + Azure Disk)]
   API --> KV[Key Vault via Workload Identity + CSI]
-  AKS[AKS - one low-cost cluster] --> FE
+  AKS[AKS - shared cluster] --> TR
+  AKS --> FE
   AKS --> API
   ACR[Azure Container Registry] --> AKS
   MON[Log Analytics + App Insights] --> AKS
   GH[GitHub Actions OIDC] --> AZ[Azure]
 ```
 
-The cluster is shared to reduce cost, while `dev` and `prod` are isolated with separate namespaces, workload identities, PostgreSQL StatefulSets/PVCs, public IP origins, Front Door endpoints, Helm releases, GitHub Environments, and Terraform state files.
+The cluster is shared to reduce cost, while `dev` and `prod` are isolated with separate namespaces, workload identities, PostgreSQL StatefulSets/PVCs, static public IP/DNS names, Traefik releases, TLS certificates, Helm releases, GitHub Environments, and Terraform state files.
 
 ## Terraform state and locking
 
 The remote backend is Azure Blob Storage. Azure Blob state locking uses blob leases automatically. The repository deliberately separates state into:
 
-- `shared.tfstate` — VNet, AKS, ACR, Key Vault, monitoring, and the shared Front Door Standard profile.
-- `dev.tfstate` — dev identity/federation, public IP origin, and Front Door endpoint/origin group/origin/route.
-- `prod.tfstate` — prod identity/federation, public IP origin, and Front Door endpoint/origin group/origin/route.
+- `shared.tfstate` — VNet, AKS, ACR, Key Vault and monitoring.
+- `dev.tfstate` — dev identity/federation and static public IP/DNS hostname.
+- `prod.tfstate` — prod identity/federation and static public IP/DNS hostname.
 
 GitHub Actions also uses concurrency groups per Terraform root and all Terraform commands use `-lock-timeout=5m` so parallel applies cannot race a locked state.
 
@@ -47,7 +49,7 @@ See [`docs/state-management.md`](docs/state-management.md) for the locking, conc
 │   └── web/
 ├── helm/quiz-app/
 ├── infra/
-│   ├── modules/{network,aks,registry,key-vault,monitoring,frontdoor,environment}/
+│   ├── modules/{network,aks,registry,key-vault,monitoring,environment}/
 │   ├── shared/
 │   └── environments/{dev,prod}/
 ├── scripts/
@@ -121,7 +123,6 @@ PUBLIC_HOSTNAME
 PUBLIC_IP_NAME
 KEY_VAULT_NAME
 WORKLOAD_IDENTITY_CLIENT_ID
-FRONT_DOOR_ID
 POSTGRES_HOST
 POSTGRES_DATABASE
 POSTGRES_ADMIN_USER
@@ -177,7 +178,7 @@ export DEV_URL PROD_URL AZURE_TENANT_ID
 ./scripts/configure-entra.sh
 ```
 
-The script creates an Entra application registration, exposes the `Quiz.Access` delegated API permission and configures the HTTPS Front Door SPA redirect URIs for dev/prod. It prints `ENTRA_CLIENT_ID` and `ENTRA_AUDIENCE`.
+The script creates an Entra application registration, exposes the `Quiz.Access` delegated API permission and configures the HTTPS `*.cloudapp.azure.com` SPA redirect URIs for dev/prod. It prints `ENTRA_CLIENT_ID` and `ENTRA_AUDIENCE`.
 
 If `ADMIN_GROUP_ID` is empty, admin operations are denied. Set it to an Entra security group object ID whose members should manage questions.
 
@@ -218,7 +219,7 @@ API docs: `http://localhost:8000/docs`.
 - AKS authentication via OIDC + kubelogin
 - Helm deployment
 - rollout verification
-- HTTPS smoke test through Azure Front Door
+- HTTPS smoke test through Traefik using the Let's Encrypt certificate
 
 Application deployment mapping:
 
@@ -234,7 +235,9 @@ The chart includes:
 
 - frontend and API Deployments
 - ClusterIP API Service
-- public `LoadBalancer` frontend Service bound to a Terraform-managed Azure Public IP
+- internal `ClusterIP` frontend Service behind an environment-specific Traefik ingress controller
+- static Terraform-managed Azure Public IP bound to Traefik
+- cert-manager `Issuer` and `Certificate` resources using Let's Encrypt HTTP-01
 - separate namespace per environment
 - API ServiceAccount using AKS Workload Identity
 - ConfigMap for non-secret API runtime configuration
@@ -268,11 +271,11 @@ The seed contains 20 easy science questions. The API does not return correct ans
 - ACR image pulls use the AKS kubelet managed identity.
 - Terraform state is remote, locked, encrypted by Azure Storage and separated by shared/dev/prod roots. State can contain sensitive values, so state-container RBAC must remain restricted.
 - Production approval is implemented with a GitHub Environment.
-- Azure Front Door terminates public HTTPS and forwards HTTP to the environment's AKS LoadBalancer origin. The origin is still directly reachable in this demo configuration; origin lockdown can be added separately after the AFD path is validated.
+- Traefik terminates public HTTPS using a certificate issued by Let's Encrypt through cert-manager. Each environment reuses its Terraform-managed Azure Public IP and `*.cloudapp.azure.com` hostname.
 
 ## Cost considerations
 
-This repo prioritizes low cost but is still real Azure infrastructure. Main recurring costs are AKS nodes, Front Door Standard, Log Analytics ingestion, Azure Disk storage and public IPs. The AKS system pool uses cluster autoscaling with 2–3 nodes and the registry uses Basic ACR. Review Azure pricing before applying.
+This repo prioritizes low cost but is still real Azure infrastructure. Traefik, cert-manager and Let's Encrypt do not add an Azure service fee; main recurring costs are AKS nodes, Log Analytics ingestion, Azure Disk storage and public IPs. The AKS system pool uses cluster autoscaling with 2–3 nodes and the registry uses Basic ACR. Review Azure pricing before applying.
 
 ## Troubleshooting
 
@@ -282,6 +285,6 @@ This repo prioritizes low cost but is still real Azure infrastructure. Main recu
 
 **Pods cannot read Key Vault** — verify the ServiceAccount client ID, federated identity subject `system:serviceaccount:<namespace>:quiz-api`, and `Key Vault Secrets User` role.
 
-**Front Door returns 502** — check the frontend LoadBalancer has the Terraform-managed public IP and `/healthz` returns 200 on the origin FQDN.
+**HTTPS/certificate fails** — check `kubectl get ingress,issuer,certificate,order,challenge -n quiz-<env>`, verify the Traefik LoadBalancer owns the Terraform-managed public IP, and confirm the `*.cloudapp.azure.com` hostname resolves to that IP.
 
 **Entra login redirects incorrectly** — rerun `configure-entra.sh` after the Terraform public URLs are known and confirm both redirect URIs exist on the SPA app registration.
