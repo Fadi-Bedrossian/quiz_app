@@ -1,5 +1,7 @@
-export async function request(path, options = {}) {
+export async function request(path, options = {}, accessToken = '') {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+
   const response = await fetch(path, { ...options, headers })
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`

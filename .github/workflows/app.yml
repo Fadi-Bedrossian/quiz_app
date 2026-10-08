@@ -75,7 +75,11 @@ jobs:
         shell: bash
         run: |
           docker build -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG" app/api
-          docker build -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
+          docker build \
+            --build-arg VITE_ENTRA_TENANT_ID="${{ vars.AZURE_TENANT_ID }}" \
+            --build-arg VITE_ENTRA_CLIENT_ID="${{ vars.ENTRA_CLIENT_ID }}" \
+            --build-arg VITE_ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
+            -t "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG" app/web
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-api:$TAG"
           docker push "${{ vars.ACR_NAME }}.azurecr.io/quiz-web:$TAG"
       - uses: aquasecurity/trivy-action@v0.36.0
@@ -151,6 +155,9 @@ jobs:
             --set ingress.className="$TRAEFIK_CLASS" \
             --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
+            --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" \
+            --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" \
+            --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
             --atomic --cleanup-on-fail --timeout 3m
 
           cat >/tmp/traefik-values.yaml <<VALUES

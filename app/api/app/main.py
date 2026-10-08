@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .auth import admin_claims
 from .config import get_settings
 from .db import Base, SessionLocal, engine, get_db
 from .logging_config import setup_logging
@@ -37,7 +38,6 @@ def init_db() -> None:
             try:
                 db.commit()
             except IntegrityError:
-                # Another replica may have inserted the same seed row concurrently.
                 db.rollback()
 
 
@@ -112,12 +112,19 @@ def submit(payload: SubmitRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/admin/questions", response_model=list[QuestionAdmin])
-def admin_list(db: Session = Depends(get_db)):
+def admin_list(
+    _claims: dict = Depends(admin_claims),
+    db: Session = Depends(get_db),
+):
     return db.scalars(select(Question).order_by(Question.id)).all()
 
 
 @app.post("/api/admin/questions", response_model=QuestionAdmin, status_code=201)
-def admin_create(payload: QuestionCreate, db: Session = Depends(get_db)):
+def admin_create(
+    payload: QuestionCreate,
+    _claims: dict = Depends(admin_claims),
+    db: Session = Depends(get_db),
+):
     row = Question(**payload.model_dump())
     db.add(row)
     db.commit()
@@ -126,7 +133,12 @@ def admin_create(payload: QuestionCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/api/admin/questions/{question_id}", response_model=QuestionAdmin)
-def admin_update(question_id: int, payload: QuestionCreate, db: Session = Depends(get_db)):
+def admin_update(
+    question_id: int,
+    payload: QuestionCreate,
+    _claims: dict = Depends(admin_claims),
+    db: Session = Depends(get_db),
+):
     row = db.get(Question, question_id)
     if not row:
         raise HTTPException(status_code=404, detail="Question not found")
@@ -138,7 +150,11 @@ def admin_update(question_id: int, payload: QuestionCreate, db: Session = Depend
 
 
 @app.delete("/api/admin/questions/{question_id}", status_code=204)
-def admin_delete(question_id: int, db: Session = Depends(get_db)):
+def admin_delete(
+    question_id: int,
+    _claims: dict = Depends(admin_claims),
+    db: Session = Depends(get_db),
+):
     row = db.get(Question, question_id)
     if not row:
         raise HTTPException(status_code=404, detail="Question not found")

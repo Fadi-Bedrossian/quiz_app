@@ -1,5 +1,11 @@
 import { createElement, useEffect, useMemo, useState } from 'react'
 import { request } from './api'
+import {
+  authConfigured,
+  existingAdminSession,
+  signInAdmin,
+  signOutAdmin,
+} from './auth'
 import './styles.css'
 
 function shuffled(items) {
@@ -59,14 +65,106 @@ function Quiz() {
 function Admin() {
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
+  const [accessToken, setAccessToken] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [checkingSession, setCheckingSession] = useState(authConfigured)
   const empty = { prompt:'', options:['','','',''], correct_index:0, explanation:'', category:'science', difficulty:'easy' }
   const [form, setForm] = useState(empty)
-  const load = () => request('/api/admin/questions').then(setRows).catch(e => setError(e.message))
-  useEffect(load, [])
-  async function add(e) { e.preventDefault(); try { await request('/api/admin/questions',{method:'POST',body:JSON.stringify(form)}); setForm(empty); load() } catch(e){ setError(e.message) } }
-  async function remove(id) { try { await request(`/api/admin/questions/${id}`,{method:'DELETE'}); load() } catch(e){setError(e.message)} }
+
+  async function load(token) {
+    try {
+      setRows(await request('/api/admin/questions', {}, token))
+      setError('')
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  useEffect(() => {
+    let active = true
+
+    async function restore() {
+      if (!authConfigured) {
+        if (active) setCheckingSession(false)
+        return
+      }
+      try {
+        const session = await existingAdminSession()
+        if (!active || !session) return
+        setAccessToken(session.accessToken)
+        setAccountName(session.account?.username || session.account?.name || '')
+        const data = await request('/api/admin/questions', {}, session.accessToken)
+        if (active) setRows(data)
+      } catch (e) {
+        if (active) setError(e.message)
+      } finally {
+        if (active) setCheckingSession(false)
+      }
+    }
+
+    restore()
+    return () => { active = false }
+  }, [])
+
+  async function login() {
+    try {
+      setError('')
+      const session = await signInAdmin()
+      setAccessToken(session.accessToken)
+      setAccountName(session.account?.username || session.account?.name || '')
+      await load(session.accessToken)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  async function logout() {
+    try { await signOutAdmin() } catch (e) { setError(e.message) }
+    setAccessToken('')
+    setAccountName('')
+    setRows([])
+  }
+
+  async function add(e) {
+    e.preventDefault()
+    try {
+      await request('/api/admin/questions', { method:'POST', body:JSON.stringify(form) }, accessToken)
+      setForm(empty)
+      await load(accessToken)
+    } catch (e) { setError(e.message) }
+  }
+
+  async function remove(id) {
+    try {
+      await request(`/api/admin/questions/${id}`, { method:'DELETE' }, accessToken)
+      await load(accessToken)
+    } catch (e) { setError(e.message) }
+  }
+
+  if (checkingSession) return <p>Checking admin session…</p>
+
+  if (!authConfigured) {
+    return <>
+      <h2>Admin — Questions</h2>
+      <p className="error">Admin sign-in is not configured for this environment.</p>
+    </>
+  }
+
+  if (!accessToken) {
+    return <>
+      <h2>Admin — Questions</h2>
+      <p>The quiz is public. Sign in only to manage questions.</p>
+      {error && <p className="error">{error}</p>}
+      <button onClick={login}>Sign in with Microsoft Entra</button>
+    </>
+  }
+
   return <>
-    <h2>Admin — Questions</h2>{error && <p className="error">{error}</p>}
+    <div className="toolbar">
+      <strong>Admin — Questions</strong>
+      <span>{accountName || 'Signed in'} <button onClick={logout}>Sign out</button></span>
+    </div>
+    {error && <p className="error">{error}</p>}
     <form className="card" onSubmit={add}>
       <input placeholder="Question" value={form.prompt} onChange={e=>setForm({...form,prompt:e.target.value})} required/>
       {form.options.map((x,i)=><input key={i} placeholder={`Option ${i+1}`} value={x} onChange={e=>{const o=[...form.options];o[i]=e.target.value;setForm({...form,options:o})}} required/>)}
