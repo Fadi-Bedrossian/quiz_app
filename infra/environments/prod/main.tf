@@ -27,6 +27,5 @@ module "environment" {
   acr_login_server     = data.terraform_remote_state.shared.outputs.acr_login_server
   key_vault_id         = data.terraform_remote_state.shared.outputs.key_vault_id
   key_vault_name       = data.terraform_remote_state.shared.outputs.key_vault_name
-  frontdoor_profile_id = data.terraform_remote_state.shared.outputs.frontdoor_profile_id
   name_suffix          = data.terraform_remote_state.shared.outputs.name_suffix
 }
