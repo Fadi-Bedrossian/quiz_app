@@ -65,6 +65,80 @@ az aks command invoke \
 
 Prometheus, Loki, and Alertmanager remain internal services and are consumed through Grafana datasources/dashboards.
 
+### Find the provisioned dashboard
+
+After login, go to **Dashboards -> Browse** and open:
+
+**Quiz App - Application, Golden Signals, SLOs & Logs**
+
+Direct path:
+
+```text
+https://<prod-hostname>/grafana/d/quiz-observability
+```
+
+Use the **Environment** variable at the top of the dashboard to switch between `dev` and `prod`.
+
+If the Grafana home page says `Recent dashboards: 0`, that only means no dashboard has been opened recently. It does not indicate a Prometheus scraping failure.
+
+### Data sources
+
+Under **Connections -> Data sources**, the expected provisioned data sources are:
+
+```text
+Prometheus
+Loki
+```
+
+Prometheus provides application and Kubernetes metrics. Loki provides Kubernetes container logs collected by Fluent Bit.
+
+### If the dashboard is missing
+
+Verify the dashboard ConfigMap and Grafana sidecar:
+
+```bash
+az aks command invoke \
+  -g sg-quiz-rg \
+  -n sg-quiz-aks \
+  --command "
+    kubectl get configmap quiz-observability-dashboard -n observability --show-labels;
+    POD=\$(kubectl get pods -n observability -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}');
+    kubectl logs -n observability \$POD -c grafana-sc-dashboard --tail=100 || true
+  "
+```
+
+The ConfigMap should have the `grafana_dashboard=1` label.
+
+### If panels show no data
+
+First verify that both ServiceMonitors exist:
+
+```bash
+az aks command invoke \
+  -g sg-quiz-rg \
+  -n sg-quiz-aks \
+  --command "kubectl get servicemonitors -n observability"
+```
+
+Expected application monitors:
+
+```text
+quiz-api-dev
+quiz-api-prod
+```
+
+The API metrics endpoint exports names such as:
+
+```text
+quiz_http_requests_total
+quiz_http_request_duration_seconds
+quiz_http_requests_in_progress
+quiz_quiz_submissions_total
+quiz_quiz_score_percent
+```
+
+Generate a few quiz requests in the selected environment, then refresh the dashboard. Rate-based panels need recent traffic in their time window.
+
 ## Useful checks
 
 ```bash
