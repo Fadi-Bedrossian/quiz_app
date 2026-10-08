@@ -14,6 +14,11 @@ image:
 service:
   publicIpName: ""
   publicIpResourceGroup: ""
+ingress:
+  enabled: false
+  host: ""
+  className: ""
+  tlsSecretName: quiz-web-tls
 workloadIdentityClientId: ""
 tenantId: ""
 keyVaultName: ""
