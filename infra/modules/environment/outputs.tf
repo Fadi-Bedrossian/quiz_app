@@ -10,3 +10,4 @@ output "postgres_database" { value = "quiz" }
 output "postgres_admin_user" { value = "quizadmin" }
 output "acr_name" { value = var.acr_name }
 output "acr_login_server" { value = var.acr_login_server }
+output "frontdoor_endpoint_id" { value = azurerm_cdn_frontdoor_endpoint.web.id }
