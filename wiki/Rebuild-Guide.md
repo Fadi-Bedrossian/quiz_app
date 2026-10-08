@@ -199,9 +199,9 @@ gh variable list --env prod --repo "$REPO"
 
 This refreshes generated values including deploy identity, public URL/hostname/IP name, Key Vault, workload identity, PostgreSQL settings, and ACR name.
 
-## 9. Entra for current prod authentication
+## 9. Entra for Admin authentication
 
-Current prod authentication is enabled, and Entra registrations are not Terraform-managed.
+The normal quiz is public. Microsoft Entra is used only for the Admin screen and `/api/admin/*`; the app registrations are not Terraform-managed.
 
 Use:
 
@@ -211,11 +211,13 @@ Use:
 Set:
 
 ```bash
-gh variable set ENTRA_CLIENT_ID --env prod --repo "$REPO" \
-  --body "<sg-quiz-web-client-id>"
+for ENV in dev prod; do
+  gh variable set ENTRA_CLIENT_ID --env "$ENV" --repo "$REPO" \
+    --body "<sg-quiz-web-client-id>"
 
-gh variable set ENTRA_AUDIENCE --env prod --repo "$REPO" \
-  --body "api://<sg-quiz-app-client-id>"
+  gh variable set ENTRA_AUDIENCE --env "$ENV" --repo "$REPO" \
+    --body "api://<sg-quiz-app-client-id>"
+done
 ```
 
 For admin authorization, set `ADMIN_GROUP_ID` to the security-group object ID.
