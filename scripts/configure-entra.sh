@@ -27,11 +27,57 @@ else
   az login --tenant "$AZURE_TENANT_ID" --use-device-code >/dev/null
 fi
 
-APP_ID=$(az ad app list --display-name "$APP_NAME" --query '[0].appId' -o tsv)
-if [ -z "$APP_ID" ]; then
-  APP_ID=$(az ad app create --display-name "$APP_NAME" --sign-in-audience AzureADMyOrg --query appId -o tsv)
+APP_ID="${ENTRA_CLIENT_ID:-}"
+
+if [[ -n "$APP_ID" ]]; then
+  echo "Using existing Entra application $APP_ID."
+else
+  APP_ID="$(az ad app list \
+    --show-mine \
+    --display-name "$APP_NAME" \
+    --query '[0].appId' \
+    -o tsv 2>/dev/null || true)"
+
+  if [[ -n "$APP_ID" ]]; then
+    echo "Using existing owned Entra application $APP_ID."
+  else
+    echo "No owned Entra application named '$APP_NAME' was found; creating one."
+
+    CREATE_ERROR="$(mktemp)"
+    if ! APP_ID="$(az ad app create \
+      --display-name "$APP_NAME" \
+      --sign-in-audience AzureADMyOrg \
+      --query appId \
+      -o tsv 2>"$CREATE_ERROR")"; then
+      cat "$CREATE_ERROR" >&2
+      rm -f "$CREATE_ERROR"
+
+      cat >&2 <<'EOF'
+Unable to create the Entra application registration.
+
+Azure subscription Owner/Contributor permissions do not grant Microsoft Entra
+directory permissions. Ask a tenant administrator to either:
+  - allow users to register applications, or
+  - assign you the Microsoft Entra "Application Developer" role
+    (or Cloud Application Administrator / Application Administrator).
+
+If an administrator creates the app for you, set ENTRA_CLIENT_ID to its
+Application (client) ID and rerun this script.
+EOF
+      exit 1
+    fi
+    rm -f "$CREATE_ERROR"
+  fi
 fi
-OBJ_ID=$(az ad app show --id "$APP_ID" --query id -o tsv)
+
+SHOW_ERROR="$(mktemp)"
+if ! OBJ_ID="$(az ad app show --id "$APP_ID" --query id -o tsv 2>"$SHOW_ERROR")"; then
+  cat "$SHOW_ERROR" >&2
+  rm -f "$SHOW_ERROR"
+  echo "Cannot read Entra application $APP_ID. Ensure you own it or have an application administrator role." >&2
+  exit 1
+fi
+rm -f "$SHOW_ERROR"
 SCOPE_ID=$(az rest --method GET --uri "https://graph.microsoft.com/v1.0/applications/$OBJ_ID" --query "api.oauth2PermissionScopes[?value=='Quiz.Access'].id | [0]" -o tsv 2>/dev/null || true)
 if [ -z "$SCOPE_ID" ]; then
   SCOPE_ID=$(python - <<'PY2'
@@ -44,7 +90,24 @@ MANIFEST=$(cat <<EOF
 {"identifierUris":["api://$APP_ID"],"groupMembershipClaims":"SecurityGroup","api":{"requestedAccessTokenVersion":2,"oauth2PermissionScopes":[{"adminConsentDescription":"Access the Quiz API","adminConsentDisplayName":"Access Quiz API","id":"$SCOPE_ID","isEnabled":true,"type":"User","userConsentDescription":"Access the Quiz API","userConsentDisplayName":"Access Quiz API","value":"Quiz.Access"}]},"spa":{"redirectUris":["$DEV_URL","$PROD_URL"]}}
 EOF
 )
-az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$OBJ_ID" --headers 'Content-Type=application/json' --body "$MANIFEST" >/dev/null
+PATCH_ERROR="$(mktemp)"
+if ! az rest \
+  --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/$OBJ_ID" \
+  --headers 'Content-Type=application/json' \
+  --body "$MANIFEST" \
+  >/dev/null 2>"$PATCH_ERROR"; then
+  cat "$PATCH_ERROR" >&2
+  rm -f "$PATCH_ERROR"
+
+  cat >&2 <<EOF
+Unable to update Entra application $APP_ID.
+Ensure the signed-in user owns this application or has an appropriate
+Microsoft Entra application administrator role.
+EOF
+  exit 1
+fi
+rm -f "$PATCH_ERROR"
 cat <<EOF
 Entra app configured.
 ENTRA_CLIENT_ID=$APP_ID
