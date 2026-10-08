@@ -1,5 +1,5 @@
-output "public_url" { value = "http://${azurerm_public_ip.web.fqdn}" }
-output "public_hostname" { value = azurerm_public_ip.web.fqdn }
+output "public_url" { value = "https://${azurerm_cdn_frontdoor_endpoint.web.host_name}" }
+output "public_hostname" { value = azurerm_cdn_frontdoor_endpoint.web.host_name }
 output "origin_fqdn" { value = azurerm_public_ip.web.fqdn }
 output "public_ip_name" { value = azurerm_public_ip.web.name }
 output "deploy_client_id" { value = azurerm_user_assigned_identity.deploy.client_id }
