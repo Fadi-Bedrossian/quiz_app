@@ -1,11 +1,5 @@
 import { createElement, useEffect, useMemo, useState } from 'react'
 import { request } from './api'
-import {
-  authConfigured,
-  existingAdminSession,
-  signInAdmin,
-  signOutAdmin,
-} from './auth'
 import './styles.css'
 
 function shuffled(items) {
@@ -65,15 +59,12 @@ function Quiz() {
 function Admin() {
   const [rows, setRows] = useState([])
   const [error, setError] = useState('')
-  const [accessToken, setAccessToken] = useState('')
-  const [accountName, setAccountName] = useState('')
-  const [checkingSession, setCheckingSession] = useState(authConfigured)
   const empty = { prompt:'', options:['','','',''], correct_index:0, explanation:'', category:'science', difficulty:'easy' }
   const [form, setForm] = useState(empty)
 
-  async function load(token) {
+  async function load() {
     try {
-      setRows(await request('/api/admin/questions', {}, token))
+      setRows(await request('/api/admin/questions'))
       setError('')
     } catch (e) {
       setError(e.message)
@@ -81,88 +72,28 @@ function Admin() {
   }
 
   useEffect(() => {
-    let active = true
-
-    async function restore() {
-      if (!authConfigured) {
-        if (active) setCheckingSession(false)
-        return
-      }
-      try {
-        const session = await existingAdminSession()
-        if (!active || !session) return
-        setAccessToken(session.accessToken)
-        setAccountName(session.account?.username || session.account?.name || '')
-        const data = await request('/api/admin/questions', {}, session.accessToken)
-        if (active) setRows(data)
-      } catch (e) {
-        if (active) setError(e.message)
-      } finally {
-        if (active) setCheckingSession(false)
-      }
-    }
-
-    restore()
-    return () => { active = false }
+    load()
   }, [])
-
-  async function login() {
-    try {
-      setError('')
-      const session = await signInAdmin()
-      setAccessToken(session.accessToken)
-      setAccountName(session.account?.username || session.account?.name || '')
-      await load(session.accessToken)
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  async function logout() {
-    try { await signOutAdmin() } catch (e) { setError(e.message) }
-    setAccessToken('')
-    setAccountName('')
-    setRows([])
-  }
 
   async function add(e) {
     e.preventDefault()
     try {
-      await request('/api/admin/questions', { method:'POST', body:JSON.stringify(form) }, accessToken)
+      await request('/api/admin/questions', { method:'POST', body:JSON.stringify(form) })
       setForm(empty)
-      await load(accessToken)
+      await load()
     } catch (e) { setError(e.message) }
   }
 
   async function remove(id) {
     try {
-      await request(`/api/admin/questions/${id}`, { method:'DELETE' }, accessToken)
-      await load(accessToken)
+      await request(`/api/admin/questions/${id}`, { method:'DELETE' })
+      await load()
     } catch (e) { setError(e.message) }
-  }
-
-  if (checkingSession) return <p>Checking admin session…</p>
-
-  if (!authConfigured) {
-    return <>
-      <h2>Admin — Questions</h2>
-      <p className="error">Admin sign-in is not configured for this environment.</p>
-    </>
-  }
-
-  if (!accessToken) {
-    return <>
-      <h2>Admin — Questions</h2>
-      <p>The quiz is public. Sign in only to manage questions.</p>
-      {error && <p className="error">{error}</p>}
-      <button onClick={login}>Sign in with Microsoft Entra</button>
-    </>
   }
 
   return <>
     <div className="toolbar">
       <strong>Admin — Questions</strong>
-      <span>{accountName || 'Signed in'} <button onClick={logout}>Sign out</button></span>
     </div>
     {error && <p className="error">{error}</p>}
     <form className="card" onSubmit={add}>
