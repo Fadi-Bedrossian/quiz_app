@@ -25,12 +25,8 @@ set -e
 
 echo "$SUBMIT"
 
-# Azure CLI currently prints a human-readable submission message for --no-wait,
-# for example:
-# command id: 0123456789abcdef0123456789abcdef, started at: None, status: Running
 COMMAND_ID="$(grep -Eo '[0-9a-fA-F]{32}' <<<"$SUBMIT" | head -n1 || true)"
 
-# Keep JSON compatibility in case a future CLI version returns structured output.
 if [[ -z "$COMMAND_ID" ]] && jq -e . >/dev/null 2>&1 <<<"$SUBMIT"; then
   COMMAND_ID="$(jq -r '.id // .commandId // empty' <<<"$SUBMIT")"
 fi
@@ -44,7 +40,11 @@ echo "AKS command id: $COMMAND_ID"
 
 for attempt in $(seq 1 180); do
   set +e
-  RESULT="$(az aks command result     --resource-group "$RESOURCE_GROUP"     --name "$AKS_NAME"     --command-id "$COMMAND_ID"     -o json 2>/tmp/aks-command-result.err)"
+  RESULT="$(az aks command result \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$AKS_NAME" \
+    --command-id "$COMMAND_ID" \
+    -o json 2>/tmp/aks-command-result.err)"
   rc=$?
   set -e
 
@@ -58,14 +58,33 @@ for attempt in $(seq 1 180); do
     continue
   fi
 
+  # Some Azure CLI versions return a human-readable status line while the
+  # run-command result is not ready yet, even when -o json is requested.
   if ! jq -e . >/dev/null 2>&1 <<<"$RESULT"; then
-    echo "Unexpected AKS command result:"
-    echo "$RESULT"
-    if [[ $attempt -eq 180 ]]; then
-      exit 1
-    fi
-    sleep 5
-    continue
+    TEXT_STATE="$(sed -n 's/.*status: \([^ ,]*\).*/\1/p' <<<"$RESULT" | head -n1)"
+
+    case "$TEXT_STATE" in
+      Initing|Running|Succeeded)
+        if (( attempt == 1 || attempt % 12 == 0 )); then
+          echo "AKS command still processing (status: $TEXT_STATE, command id: $COMMAND_ID)"
+        fi
+        sleep 5
+        continue
+        ;;
+      Failed|Canceled|Cancelled)
+        echo "$RESULT"
+        exit 1
+        ;;
+      *)
+        echo "Unexpected AKS command result:"
+        echo "$RESULT"
+        if [[ $attempt -eq 180 ]]; then
+          exit 1
+        fi
+        sleep 5
+        continue
+        ;;
+    esac
   fi
 
   STATE="$(jq -r '.provisioningState // empty' <<<"$RESULT")"
