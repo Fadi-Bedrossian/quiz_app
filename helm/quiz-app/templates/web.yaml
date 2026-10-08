@@ -29,10 +29,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: quiz-web
-  annotations:
-    service.beta.kubernetes.io/azure-pip-name: {{ .Values.service.publicIpName | quote }}
-    service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ .Values.service.publicIpResourceGroup | quote }}
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   selector: { app: quiz-web }
   ports: [{ port: 80, targetPort: 8080 }]
