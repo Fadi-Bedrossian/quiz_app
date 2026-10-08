@@ -106,7 +106,7 @@ jobs:
 
           cd helm/quiz-app
 
-          cat > deploy.sh <<EOF
+          cat > deploy.sh <<'EOF'
           set -euo pipefail
 
           RELEASE="quiz-$ENV"
@@ -145,7 +145,7 @@ jobs:
           bash ../../scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
             "${{ vars.AKS_NAME }}" \
-            "bash deploy.sh" \
+            "ENV=$ENV bash deploy.sh" \
             "."
 
       - name: Smoke test API through web proxy
