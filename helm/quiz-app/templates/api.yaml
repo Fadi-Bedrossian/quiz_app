@@ -26,8 +26,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: quiz-api-config
-            - secretRef:
-                name: quiz-api-secrets
           volumeMounts:
             - { name: secrets-store, mountPath: /mnt/secrets-store, readOnly: true }
           readinessProbe: { httpGet: { path: /api/healthz, port: 8000 }, initialDelaySeconds: 5, periodSeconds: 10 }
