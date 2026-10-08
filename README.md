@@ -8,7 +8,7 @@ Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHu
 - [Destroy and rebuild guide](wiki/Rebuild-Guide.md)
 - [Wiki home](wiki/Home.md)
 
-The rebuild guide contains the exact order for a full destroy/reapply: bootstrap state and OIDC, apply shared/dev/prod infrastructure, refresh GitHub Environment variables, configure Entra for admin access, then deploy the application to dev and finally prod.
+The rebuild guide contains the exact order for a full destroy/reapply: bootstrap state and OIDC, apply shared/dev/prod infrastructure, refresh GitHub Environment variables, then deploy the application to dev and finally prod.
 
 ## Architecture
 
@@ -250,7 +250,7 @@ kubectl logs -n quiz-dev deploy/quiz-dev-api
 
 ## Application behavior
 
-The seed contains 20 easy science questions. The normal quiz is public over HTTPS and does not require sign-in. The API does not return correct answers with the question list; answers are scored server-side and explanations are returned only after submission. The Admin screen signs in with Microsoft Entra, and only `/api/admin/*` requires a bearer token with the delegated `Quiz.Access` scope.
+The seed contains 20 easy science questions. The quiz and Admin screen are both public over HTTPS in dev and prod and do not require sign-in. The API does not return correct answers with the question list; answers are scored server-side and explanations are returned only after submission.
 
 ## Security notes
 
@@ -262,7 +262,7 @@ The seed contains 20 easy science questions. The normal quiz is public over HTTP
 - Terraform state is remote, locked, encrypted by Azure Storage and separated by shared/dev/prod roots. State can contain sensitive values, so state-container RBAC must remain restricted.
 - Production approval is implemented with a GitHub Environment.
 - Traefik terminates public HTTPS using a certificate issued by Let's Encrypt through cert-manager. Each environment reuses its Terraform-managed Azure Public IP and `*.cloudapp.azure.com` hostname.
-- Public quiz endpoints remain anonymous; admin CRUD endpoints require Microsoft Entra authentication. `ADMIN_GROUP_ID` is optional and, when set, further restricts admin access to that security group.
+- Quiz and admin CRUD endpoints are intentionally public in both dev and prod. HTTPS protects traffic in transit, but there is no application authentication layer.
 
 ## Cost considerations
 
