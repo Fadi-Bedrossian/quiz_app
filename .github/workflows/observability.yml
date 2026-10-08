@@ -80,6 +80,29 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Resolve monitoring public endpoint
+        shell: bash
+        run: |
+          MONITORING_PUBLIC_IP_NAME="$(az network public-ip list \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query "[?tags.component=='observability' && tags.environment=='prod'].name | [0]" \
+            -o tsv)"
+
+          if [ -z "$MONITORING_PUBLIC_IP_NAME" ]; then
+            echo "Monitoring public IP not found. Apply the prod infrastructure workflow first."
+            exit 1
+          fi
+
+          MONITORING_HOSTNAME="$(az network public-ip show \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "$MONITORING_PUBLIC_IP_NAME" \
+            --query dnsSettings.fqdn \
+            -o tsv)"
+
+          echo "MONITORING_PUBLIC_IP_NAME=$MONITORING_PUBLIC_IP_NAME" >> "$GITHUB_ENV"
+          echo "MONITORING_HOSTNAME=$MONITORING_HOSTNAME" >> "$GITHUB_ENV"
+          echo "Grafana hostname: $MONITORING_HOSTNAME"
+
       - name: Deploy Prometheus, Grafana, Sloth, Loki and Fluent Bit
         shell: bash
         run: |
@@ -89,6 +112,14 @@ jobs:
           set -euo pipefail
 
           NAMESPACE=observability
+          TRAEFIK_RELEASE=traefik-observability
+          TRAEFIK_NAMESPACE=traefik-observability
+          TRAEFIK_CLASS=traefik-observability
+
+          : "${MONITORING_HOSTNAME:?MONITORING_HOSTNAME is required}"
+          : "${MONITORING_PUBLIC_IP_NAME:?MONITORING_PUBLIC_IP_NAME is required}"
+          : "${AZURE_RESOURCE_GROUP:?AZURE_RESOURCE_GROUP is required}"
+
           kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
           if ! kubectl get secret grafana-admin -n "$NAMESPACE" >/dev/null 2>&1; then
@@ -100,6 +131,7 @@ jobs:
 
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
           helm repo add sloth https://slok.github.io/sloth --force-update
+          helm repo add traefik https://traefik.github.io/charts --force-update
           helm repo update
 
           helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
@@ -135,6 +167,84 @@ jobs:
           kubectl label configmap quiz-observability-dashboard \
             -n "$NAMESPACE" grafana_dashboard=1 --overwrite
 
+          cat >/tmp/traefik-observability-values.yaml <<VALUES
+          ingressClass:
+            enabled: true
+            isDefaultClass: false
+            name: "$TRAEFIK_CLASS"
+          providers:
+            kubernetesIngress:
+              enabled: true
+              ingressClass: "$TRAEFIK_CLASS"
+              namespaces:
+                - "$NAMESPACE"
+          service:
+            annotations:
+              service.beta.kubernetes.io/azure-pip-name: "$MONITORING_PUBLIC_IP_NAME"
+              service.beta.kubernetes.io/azure-load-balancer-resource-group: "$AZURE_RESOURCE_GROUP"
+          VALUES
+
+          helm upgrade --install "$TRAEFIK_RELEASE" traefik/traefik \
+            --version 41.6.0 \
+            -n "$TRAEFIK_NAMESPACE" --create-namespace \
+            -f /tmp/traefik-observability-values.yaml \
+            --wait --timeout 5m
+
+          cat <<YAML | kubectl apply -f -
+          apiVersion: cert-manager.io/v1
+          kind: Issuer
+          metadata:
+            name: letsencrypt-observability
+            namespace: $NAMESPACE
+          spec:
+            acme:
+              server: https://acme-v02.api.letsencrypt.org/directory
+              privateKeySecretRef:
+                name: letsencrypt-observability-account-key
+              solvers:
+                - http01:
+                    ingress:
+                      ingressClassName: $TRAEFIK_CLASS
+          ---
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: grafana-tls
+            namespace: $NAMESPACE
+          spec:
+            secretName: grafana-tls
+            dnsNames:
+              - "$MONITORING_HOSTNAME"
+            issuerRef:
+              name: letsencrypt-observability
+              kind: Issuer
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: grafana
+            namespace: $NAMESPACE
+          spec:
+            ingressClassName: $TRAEFIK_CLASS
+            tls:
+              - hosts:
+                  - "$MONITORING_HOSTNAME"
+                secretName: grafana-tls
+            rules:
+              - host: "$MONITORING_HOSTNAME"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: monitoring-grafana
+                          port:
+                            number: 80
+          YAML
+
+          kubectl wait -n "$NAMESPACE" --for=condition=Ready certificate/grafana-tls --timeout=180s
+
           sleep 10
 
           echo "--- observability pods ---"
@@ -147,20 +257,25 @@ jobs:
           kubectl get prometheusrules -n "$NAMESPACE" | grep quiz-api || true
           echo "--- storage ---"
           kubectl get pvc -n "$NAMESPACE"
-          echo "Grafana is internal at service monitoring-grafana in namespace observability."
+          echo "--- Grafana ingress ---"
+          kubectl get ingress,certificate -n "$NAMESPACE"
+          kubectl get service -n "$TRAEFIK_NAMESPACE"
+          echo "Grafana URL: https://$MONITORING_HOSTNAME"
+          echo "Grafana username: admin"
+          echo "Grafana password is stored in secret observability/grafana-admin."
           EOF
 
           bash ../scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
             "${{ vars.AKS_NAME }}" \
-            "bash deploy-observability.sh" \
+            "MONITORING_HOSTNAME=$MONITORING_HOSTNAME MONITORING_PUBLIC_IP_NAME=$MONITORING_PUBLIC_IP_NAME AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} bash deploy-observability.sh" \
             "."
 
       - name: Collect observability diagnostics
         if: failure()
         shell: bash
         run: |
-          DIAG_COMMAND="kubectl get pods,pvc,svc -n observability -o wide; echo '--- service monitors ---'; kubectl get servicemonitors -n observability || true; echo '--- sloth ---'; kubectl get prometheusservicelevels,prometheusrules -n observability || true; kubectl logs -n observability deploy/sloth --tail=120 || true; echo '--- loki ---'; kubectl logs -n observability deploy/loki --tail=120 || true; echo '--- fluent-bit ---'; kubectl logs -n observability ds/fluent-bit --tail=120 || true"
+          DIAG_COMMAND="kubectl get pods,pvc,svc,ingress,certificate -n observability -o wide; echo '--- monitoring ingress controller ---'; kubectl get pods,svc -n traefik-observability -o wide || true; echo '--- service monitors ---'; kubectl get servicemonitors -n observability || true; echo '--- sloth ---'; kubectl get prometheusservicelevels,prometheusrules -n observability || true; kubectl logs -n observability deploy/sloth --tail=120 || true; echo '--- loki ---'; kubectl logs -n observability deploy/loki --tail=120 || true; echo '--- fluent-bit ---'; kubectl logs -n observability ds/fluent-bit --tail=120 || true"
           bash scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
             "${{ vars.AKS_NAME }}" \
