@@ -109,7 +109,25 @@ jobs:
           cat > deploy.sh <<EOF
           set -euo pipefail
 
-          helm upgrade --install "quiz-$ENV" . -n "quiz-$ENV" --create-namespace -f "values-$ENV.yaml" \
+          RELEASE="quiz-$ENV"
+          NAMESPACE="quiz-$ENV"
+
+          # A previously interrupted Helm operation can leave the newest
+          # release secret in pending-install/pending-upgrade/pending-rollback.
+          # App deployments are serialized per environment, so remove only
+          # the newest pending Helm revision before starting the next upgrade.
+          PENDING_SECRET="$(kubectl get secrets -n "$NAMESPACE" \
+            -l "owner=helm,name=$RELEASE" \
+            --sort-by=.metadata.labels.version \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.status}{"\\n"}{end}' 2>/dev/null \
+            | awk '$2 ~ /^pending-/ {name=$1} END {print name}')"
+
+          if [ -n "$PENDING_SECRET" ]; then
+            echo "Removing stale Helm pending revision: $PENDING_SECRET"
+            kubectl delete secret "$PENDING_SECRET" -n "$NAMESPACE"
+          fi
+
+          helm upgrade --install "$RELEASE" . -n "$NAMESPACE" --create-namespace -f "values-$ENV.yaml" \
             --set image.api.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-api" \
             --set image.web.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-web" \
             --set image.api.tag="${{ github.sha }}" --set image.web.tag="${{ github.sha }}" \
@@ -117,11 +135,11 @@ jobs:
             --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
-            --wait --timeout 4m
+            --atomic --cleanup-on-fail --timeout 4m
 
-          kubectl get pods -n "quiz-$ENV" -o wide
-          kubectl get service -n "quiz-$ENV"
-          kubectl get endpoints -n "quiz-$ENV"
+          kubectl get pods -n "$NAMESPACE" -o wide
+          kubectl get service -n "$NAMESPACE"
+          kubectl get endpoints -n "$NAMESPACE"
           EOF
 
           bash ../../scripts/aks-command.sh \
