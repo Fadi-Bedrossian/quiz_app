@@ -1,6 +1,6 @@
 # quiz_app
 
-Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Microsoft Entra ID, Azure Key Vault, Azure Database for PostgreSQL Flexible Server, Azure Container Registry, Azure Monitor, and Azure Front Door.
+Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Microsoft Entra ID, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, and Azure Front Door Standard.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ flowchart LR
   AFD -->|HTTP origin| LB[AKS Public Load Balancer IP]
   LB --> FE[React + NGINX]
   FE -->|/api| API[FastAPI]
-  API --> PG[(PostgreSQL Flexible Server)]
+  API --> PG[(PostgreSQL StatefulSet + Azure Disk)]
   API --> KV[Key Vault via Workload Identity + CSI]
   AKS[AKS - one low-cost cluster] --> FE
   AKS --> API
@@ -19,15 +19,15 @@ flowchart LR
   GH[GitHub Actions OIDC] --> AZ[Azure]
 ```
 
-The cluster is shared to reduce cost, while `dev` and `prod` are isolated with separate namespaces, workload identities, PostgreSQL databases, public IPs, Front Door endpoints, Helm releases, GitHub Environments, and Terraform state files.
+The cluster is shared to reduce cost, while `dev` and `prod` are isolated with separate namespaces, workload identities, PostgreSQL StatefulSets/PVCs, public IP origins, Front Door endpoints, Helm releases, GitHub Environments, and Terraform state files.
 
 ## Terraform state and locking
 
 The remote backend is Azure Blob Storage. Azure Blob state locking uses blob leases automatically. The repository deliberately separates state into:
 
-- `shared.tfstate` — VNet, AKS, ACR, Key Vault, PostgreSQL server, monitoring, Front Door profile.
-- `dev.tfstate` — dev database, identity/federation, public IP, Front Door endpoint/origin/route.
-- `prod.tfstate` — prod database, identity/federation, public IP, Front Door endpoint/origin/route.
+- `shared.tfstate` — VNet, AKS, ACR, Key Vault, monitoring, and the shared Front Door Standard profile.
+- `dev.tfstate` — dev identity/federation, public IP origin, and Front Door endpoint/origin group/origin/route.
+- `prod.tfstate` — prod identity/federation, public IP origin, and Front Door endpoint/origin group/origin/route.
 
 GitHub Actions also uses concurrency groups per Terraform root and all Terraform commands use `-lock-timeout=5m` so parallel applies cannot race a locked state.
 
@@ -47,7 +47,7 @@ See [`docs/state-management.md`](docs/state-management.md) for the locking, conc
 │   └── web/
 ├── helm/quiz-app/
 ├── infra/
-│   ├── modules/{network,aks,database,registry,key-vault,monitoring,frontdoor-profile,environment}/
+│   ├── modules/{network,aks,registry,key-vault,monitoring,frontdoor,environment}/
 │   ├── shared/
 │   └── environments/{dev,prod}/
 ├── scripts/
@@ -177,7 +177,7 @@ export DEV_URL PROD_URL AZURE_TENANT_ID
 ./scripts/configure-entra.sh
 ```
 
-The script creates an Entra application registration, exposes the `Quiz.Access` delegated API permission and configures SPA redirect URIs for dev/prod. It prints `ENTRA_CLIENT_ID` and `ENTRA_AUDIENCE`.
+The script creates an Entra application registration, exposes the `Quiz.Access` delegated API permission and configures the HTTPS Front Door SPA redirect URIs for dev/prod. It prints `ENTRA_CLIENT_ID` and `ENTRA_AUDIENCE`.
 
 If `ADMIN_GROUP_ID` is empty, admin operations are denied. Set it to an Entra security group object ID whose members should manage questions.
 
@@ -200,8 +200,7 @@ API docs: `http://localhost:8000/docs`.
 `.github/workflows/infrastructure.yml`
 
 - PR: fmt, validate, tfsec/checkov-style Trivy config scan, plans for shared/dev/prod.
-- `develop`: applies dev only.
-- `main`: applies shared, then prod.
+- Manual `workflow_dispatch` plans/applies the selected `dev` or `prod` environment after shared infrastructure is checked/applied.
 - OIDC only; no Azure client secret.
 - Azure Blob remote locking + `-lock-timeout=5m`.
 - GitHub Actions concurrency groups prevent same-state races.
@@ -221,11 +220,12 @@ API docs: `http://localhost:8000/docs`.
 - rollout verification
 - HTTPS smoke test through Azure Front Door
 
-Branch mapping:
+Application deployment mapping:
 
 ```text
-develop -> dev
-main    -> prod
+push develop        -> dev
+push main           -> tests only
+manual workflow run -> selected dev or prod environment
 ```
 
 ## Kubernetes / Helm
@@ -264,15 +264,15 @@ The seed contains 20 easy science questions. The API does not return correct ans
 - No Azure client secrets are committed.
 - GitHub Actions uses OIDC federation.
 - Pods access Key Vault via Workload Identity.
-- PostgreSQL uses private VNet integration and is not publicly exposed.
+- PostgreSQL runs as a single-replica StatefulSet on AKS with an Azure Disk PVC and is exposed only through an internal ClusterIP service.
 - ACR image pulls use the AKS kubelet managed identity.
 - Terraform state is remote, locked, encrypted by Azure Storage and separated by shared/dev/prod roots. State can contain sensitive values, so state-container RBAC must remain restricted.
 - Production approval is implemented with a GitHub Environment.
-- The AKS LoadBalancer allows only `AzureFrontDoor.Backend`/`AzureLoadBalancer` service tags, and NGINX rejects application traffic whose `X-Azure-FDID` does not match this Front Door profile. `/healthz` remains available for load-balancer health probing.
+- Azure Front Door terminates public HTTPS and forwards HTTP to the environment's AKS LoadBalancer origin. The origin is still directly reachable in this demo configuration; origin lockdown can be added separately after the AFD path is validated.
 
 ## Cost considerations
 
-This repo prioritizes low cost but is still real Azure infrastructure. Main recurring costs are AKS nodes, PostgreSQL Flexible Server, Front Door Standard, Log Analytics ingestion and public IPs. The defaults use one autoscaling AKS node pool (1–3 nodes), Basic ACR and a burstable PostgreSQL SKU. Review Azure pricing before applying.
+This repo prioritizes low cost but is still real Azure infrastructure. Main recurring costs are AKS nodes, Front Door Standard, Log Analytics ingestion, Azure Disk storage and public IPs. The AKS system pool uses cluster autoscaling with 2–3 nodes and the registry uses Basic ACR. Review Azure pricing before applying.
 
 ## Troubleshooting
 
