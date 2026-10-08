@@ -13,6 +13,3 @@ output "acr_name" { value = module.environment.acr_name }
 output "acr_login_server" { value = module.environment.acr_login_server }
 output "aks_name" { value = data.terraform_remote_state.shared.outputs.aks_name }
 
-output "monitoring_public_ip_name" { value = azurerm_public_ip.monitoring.name }
-output "monitoring_hostname" { value = azurerm_public_ip.monitoring.fqdn }
-output "monitoring_url" { value = "https://${azurerm_public_ip.monitoring.fqdn}" }
