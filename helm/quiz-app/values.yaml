@@ -25,10 +25,6 @@ postgres:
   user: quizadmin
   storageClassName: managed-csi
   storage: 8Gi
-entra:
-  tenantId: ""
-  audience: ""
-  adminGroupId: ""
 resources:
   web:
     requests: { cpu: 50m, memory: 64Mi }
