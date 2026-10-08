@@ -70,15 +70,14 @@ make tf-init-prod
 
 ### Remove application ingress first
 
-The public IPs are attached to Traefik LoadBalancer services, including the dedicated Grafana monitoring endpoint, so uninstall those releases before destroying Terraform-managed public IPs.
+The dev and prod public IPs are attached to their Traefik LoadBalancer services. Grafana reuses the prod Traefik/Public IP at `/grafana`, so there is no separate monitoring Public IP.
 
 ```bash
 az aks get-credentials -g "$AZURE_RESOURCE_GROUP" -n sg-quiz-aks --overwrite-existing
 
 helm uninstall quiz-prod -n quiz-prod || true
 helm uninstall traefik-prod -n traefik-prod || true
-helm uninstall traefik-observability -n traefik-observability || true
-kubectl delete namespace quiz-prod traefik-prod traefik-observability --ignore-not-found
+kubectl delete namespace quiz-prod traefik-prod --ignore-not-found
 
 helm uninstall quiz-dev -n quiz-dev || true
 helm uninstall traefik-dev -n traefik-dev || true
