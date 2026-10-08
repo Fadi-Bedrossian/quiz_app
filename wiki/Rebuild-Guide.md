@@ -29,8 +29,8 @@ cd quiz_app
 git checkout main
 git pull --ff-only
 
-az login --tenant "4b3d7376-1a11-431c-a0ff-a5b12ac5d285" --use-device-code
-az account set --subscription "e6d3df52-1185-496e-b7c7-83a4cc18b095"
+az login --tenant "<TENANT_ID>" --use-device-code
+az account set --subscription "<SUBSCRIPTION_ID>"
 gh auth login
 gh auth status
 ```
@@ -38,8 +38,8 @@ gh auth status
 Set common values:
 
 ```bash
-export AZURE_SUBSCRIPTION_ID="e6d3df52-1185-496e-b7c7-83a4cc18b095"
-export AZURE_TENANT_ID="4b3d7376-1a11-431c-a0ff-a5b12ac5d285"
+export AZURE_SUBSCRIPTION_ID="<SUBSCRIPTION_ID>"
+export AZURE_TENANT_ID="<TENANT_ID>"
 export AZURE_LOCATION="northeurope"
 export AZURE_RESOURCE_GROUP="sg-quiz-rg"
 export TFSTATE_RESOURCE_GROUP="sg-tfstate-rg"
@@ -108,8 +108,8 @@ Microsoft Entra app registrations are directory objects and are not removed by t
 ## 4. Bootstrap from zero
 
 ```bash
-export AZURE_SUBSCRIPTION_ID="e6d3df52-1185-496e-b7c7-83a4cc18b095"
-export AZURE_TENANT_ID="4b3d7376-1a11-431c-a0ff-a5b12ac5d285"
+export AZURE_SUBSCRIPTION_ID="<SUBSCRIPTION_ID>"
+export AZURE_TENANT_ID="<TENANT_ID>"
 export GITHUB_OWNER="Fadi-Bedrossian"
 export GITHUB_REPO="quiz_app"
 export AZURE_LOCATION="northeurope"
