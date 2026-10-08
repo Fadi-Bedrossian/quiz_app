@@ -268,7 +268,7 @@ jobs:
           bash ../scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
             "${{ vars.AKS_NAME }}" \
-            "MONITORING_HOSTNAME=$PROD_HOSTNAME MONITORING_PUBLIC_IP_NAME=$MONITORING_PUBLIC_IP_NAME AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} bash deploy-observability.sh" \
+            "PROD_HOSTNAME=$PROD_HOSTNAME PROD_PUBLIC_IP_NAME=$PROD_PUBLIC_IP_NAME AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} bash deploy-observability.sh" \
             "."
 
       - name: Collect observability diagnostics
