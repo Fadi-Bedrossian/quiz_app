@@ -29,3 +29,18 @@ module "environment" {
   key_vault_name      = data.terraform_remote_state.shared.outputs.key_vault_name
   name_suffix         = data.terraform_remote_state.shared.outputs.name_suffix
 }
+
+
+resource "azurerm_public_ip" "monitoring" {
+  name                = "${var.prefix}-quiz-monitoring-pip"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  domain_name_label   = "${var.prefix}-quiz-monitoring-${data.terraform_remote_state.shared.outputs.name_suffix}"
+
+  tags = {
+    component   = "observability"
+    environment = "prod"
+  }
+}

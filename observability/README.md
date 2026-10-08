@@ -10,7 +10,7 @@ This directory deploys one shared AKS observability stack for both `quiz-dev` an
 - Fluent Bit as a DaemonSet scraping Kubernetes container logs from every node and sending them to Loki.
 - One provisioned Grafana dashboard: **Quiz App - Application, Golden Signals, SLOs & Logs**.
 
-The deployment stays inside the existing AKS cluster and does not add a public monitoring endpoint.
+Grafana is exposed over a dedicated HTTPS hostname through its own Traefik LoadBalancer. Prometheus, Loki, Alertmanager, and the remaining monitoring services stay internal-only (`ClusterIP`).
 
 ## Service levels
 
@@ -35,26 +35,36 @@ Additional application metrics include in-flight requests, quiz submissions, and
 
 ## Deployment order
 
-1. Deploy the application change to **dev** so `/metrics` exists and the API Service has the `app=quiz-api` label.
-2. Run **Actions -> Observability -> Run workflow**. The workflow uses the existing `prod` GitHub Environment for OIDC credentials/approval; it creates no new GitHub Environment.
-3. Validate dev metrics, Sloth SLOs, Loki logs, and the Grafana dashboard.
-4. Deploy the same application commit to **prod**.
-5. Switch the dashboard Environment variable from `dev` to `prod` and verify production data.
+1. Deploy the application change to **dev** and **prod** so `/metrics` exists and the API Service has the `app=quiz-api` label.
+2. Apply the **prod Infrastructure** workflow once after the monitoring endpoint Terraform change. This creates the static monitoring Public IP and its `cloudapp.azure.com` DNS name.
+3. Run **Actions -> Observability -> Run workflow**. The workflow uses the existing `prod` GitHub Environment for OIDC credentials/approval and deploys a dedicated `traefik-observability` ingress controller.
+4. Wait for cert-manager to issue the Let's Encrypt certificate, then open the HTTPS Grafana URL printed by the workflow.
+5. Switch the dashboard Environment variable between `dev` and `prod` to validate both applications.
 
 ## Access Grafana
 
-From a terminal with AKS access:
+Grafana is the only public observability UI. The hostname is derived from the production application hostname by replacing `-prod-` with `-monitoring-`, for example:
 
-```bash
-az aks get-credentials --resource-group sg-quiz-rg --name sg-quiz-aks --overwrite-existing
-
-kubectl -n observability get secret grafana-admin \
-  -o jsonpath='{.data.admin-password}' | base64 -d; echo
-
-kubectl -n observability port-forward svc/monitoring-grafana 3000:80
+```text
+https://sg-quiz-monitoring-<suffix>.northeurope.cloudapp.azure.com
 ```
 
-Then open `http://localhost:3000`, sign in as `admin`, and open **Quiz App - Application, Golden Signals, SLOs & Logs**.
+The username is:
+
+```text
+admin
+```
+
+The password is generated once and stored only in the Kubernetes Secret `observability/grafana-admin`. Retrieve it without exposing Prometheus/Loki/Alertmanager:
+
+```bash
+az aks command invoke \
+  --resource-group sg-quiz-rg \
+  --name sg-quiz-aks \
+  --command "kubectl -n observability get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo"
+```
+
+Prometheus, Loki, and Alertmanager remain internal services and are consumed through Grafana datasources/dashboards.
 
 ## Useful checks
 
