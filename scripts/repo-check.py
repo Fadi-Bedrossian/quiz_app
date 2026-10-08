@@ -26,7 +26,6 @@ required = [
     "infra/environments/prod/main.tf",
     "infra/modules/aks/main.tf",
     "infra/modules/environment/main.tf",
-    "infra/modules/frontdoor/main.tf",
     "helm/quiz-app/templates/configmap.yaml",
     "helm/quiz-app/templates/secretproviderclass.yaml",
     ".github/workflows/infrastructure.yml",
