@@ -176,17 +176,17 @@ HTTPS and authentication are separate:
 - HTTPS protects traffic in transit.
 - Microsoft Entra authentication controls access to protected API operations.
 
-Current chart behavior:
+Current application behavior:
 
-- dev: `authDisabled: true`
-- prod: `authDisabled: false` by default
+- the quiz and health endpoints are public in both dev and prod
+- only `/api/admin/*` requires Microsoft Entra authentication
 
 The clean two-registration model is:
 
 - `sg-quiz-app` — FastAPI resource API exposing `Quiz.Access`
 - `sg-quiz-web` — React SPA requesting delegated `Quiz.Access`
 
-Production variables:
+Environment variables for Admin sign-in:
 
 ```text
 ENTRA_CLIENT_ID=<sg-quiz-web Application client ID>
@@ -194,9 +194,9 @@ ENTRA_AUDIENCE=api://<sg-quiz-app Application client ID>
 ADMIN_GROUP_ID=<optional security-group object ID>
 ```
 
-The API registration should issue v2 access tokens. SPA redirect URIs belong on `sg-quiz-web`.
+The SPA uses `ENTRA_AUDIENCE` as the scope base and requests `Quiz.Access`. For v2 access tokens, Microsoft Entra emits the API application client ID GUID as the token `aud`; the API validator accepts that GUID derived from the configured `api://...` value.
 
-Do not simply enable `authDisabled` in production if admin CRUD must remain protected, because that bypasses the API authorization checks too.
+The API registration should issue v2 access tokens. SPA redirect URIs belong on `sg-quiz-web`. If `ADMIN_GROUP_ID` is empty, any authenticated user in the single tenant with `Quiz.Access` can use admin CRUD; set it to a security-group object ID for stricter authorization.
 
 ## 7. Dependency order
 
