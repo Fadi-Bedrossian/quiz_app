@@ -334,6 +334,21 @@ jobs:
             -var="infra_client_id=${{ vars.AZURE_INFRA_CLIENT_ID }}" \
             -var="tfstate_storage_account=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
 
+      - name: Show environment outputs
+        if: inputs.operation == 'apply'
+        shell: bash
+        run: |
+          terraform -chdir=infra/environments/${{ inputs.environment }} output -json |
+            jq '{
+              public_url: .public_url.value,
+              public_hostname: .public_hostname.value,
+              origin_fqdn: .origin_fqdn.value,
+              public_ip_name: .public_ip_name.value,
+              frontdoor_endpoint_id: .frontdoor_endpoint_id.value,
+              deploy_client_id: .deploy_client_id.value,
+              workload_identity_client_id: .workload_identity_client_id.value
+            }'
+
       - name: Destroy environment
         if: inputs.operation == 'destroy' && inputs.confirm_destroy
         shell: bash
