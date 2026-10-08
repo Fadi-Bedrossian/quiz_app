@@ -8,5 +8,3 @@ output "acr_login_server" { value = module.registry.login_server }
 output "acr_id" { value = module.registry.id }
 output "key_vault_name" { value = module.key_vault.name }
 output "key_vault_id" { value = module.key_vault.id }
-output "frontdoor_profile_id" { value = module.frontdoor.id }
-output "frontdoor_profile_name" { value = module.frontdoor.name }
