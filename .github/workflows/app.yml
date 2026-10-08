@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
     concurrency:
-      group: app-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+      group: app-cluster
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +103,10 @@ jobs:
         shell: bash
         run: |
           ENV=${{ steps.env.outputs.name }}
+          PUBLIC_HOSTNAME="${{ vars.PUBLIC_URL }}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME#http://}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME#https://}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME%%/*}"
 
           cd helm/quiz-app
 
@@ -111,11 +115,29 @@ jobs:
 
           RELEASE="quiz-$ENV"
           NAMESPACE="quiz-$ENV"
+          TRAEFIK_RELEASE="traefik-$ENV"
+          TRAEFIK_NAMESPACE="traefik-$ENV"
+          TRAEFIK_CLASS="traefik-$ENV"
+
+          : "${PUBLIC_HOSTNAME:?PUBLIC_HOSTNAME is required}"
+          : "${PUBLIC_IP_NAME:?PUBLIC_IP_NAME is required}"
+          : "${AZURE_RESOURCE_GROUP:?AZURE_RESOURCE_GROUP is required}"
+
+          # cert-manager is shared by dev/prod and installed once per cluster.
+          CM_STATUS="$(helm status cert-manager -n cert-manager -o json 2>/dev/null | jq -r '.info.status // empty' || true)"
+          if [ "$CM_STATUS" != "deployed" ]; then
+            helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+              --version v1.21.2 \
+              -n cert-manager --create-namespace \
+              --set crds.enabled=true \
+              --wait --timeout 3m
+          fi
+
+          kubectl wait -n cert-manager --for=condition=Available deployment/cert-manager --timeout=90s
+          kubectl wait -n cert-manager --for=condition=Available deployment/cert-manager-webhook --timeout=90s
 
           # A previously interrupted Helm operation can leave the newest
           # release secret in pending-install/pending-upgrade/pending-rollback.
-          # App deployments are serialized per environment, so remove only
-          # the newest pending Helm revision before starting the next upgrade.
           PENDING_SECRET="$(kubectl get secrets -n "$NAMESPACE" \
             -l "owner=helm,name=$RELEASE" \
             --sort-by=.metadata.labels.version \
@@ -127,32 +149,72 @@ jobs:
             kubectl delete secret "$PENDING_SECRET" -n "$NAMESPACE"
           fi
 
+          # First move quiz-web from LoadBalancer to ClusterIP. This releases
+          # the existing static Azure Public IP so Traefik can own it.
           helm upgrade --install "$RELEASE" . -n "$NAMESPACE" --create-namespace -f "values-$ENV.yaml" \
             --set image.api.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-api" \
             --set image.web.repository="${{ vars.ACR_NAME }}.azurecr.io/quiz-web" \
             --set image.api.tag="${{ github.sha }}" --set image.web.tag="${{ github.sha }}" \
-            --set service.publicIpName="${{ vars.PUBLIC_IP_NAME }}" --set service.publicIpResourceGroup="${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --set ingress.enabled=true \
+            --set ingress.host="$PUBLIC_HOSTNAME" \
+            --set ingress.className="$TRAEFIK_CLASS" \
             --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
             --atomic --cleanup-on-fail --timeout 3m
 
+          cat >/tmp/traefik-values.yaml <<VALUES
+          ingressClass:
+            enabled: true
+            isDefaultClass: false
+            name: "$TRAEFIK_CLASS"
+          providers:
+            kubernetesIngress:
+              enabled: true
+              ingressClass: "$TRAEFIK_CLASS"
+              namespaces:
+                - "$NAMESPACE"
+          service:
+            annotations:
+              service.beta.kubernetes.io/azure-pip-name: "$PUBLIC_IP_NAME"
+              service.beta.kubernetes.io/azure-load-balancer-resource-group: "$AZURE_RESOURCE_GROUP"
+          VALUES
+
+          helm repo add traefik https://traefik.github.io/charts --force-update
+          helm repo update traefik
+
+          helm upgrade --install "$TRAEFIK_RELEASE" traefik/traefik \
+            --version 41.6.0 \
+            -n "$TRAEFIK_NAMESPACE" --create-namespace \
+            -f /tmp/traefik-values.yaml \
+            --wait --timeout 3m
+
+          # cert-manager uses HTTP-01 through this environment's Traefik class.
+          kubectl wait -n "$NAMESPACE" --for=condition=Ready certificate/quiz-web-tls --timeout=180s
+
           kubectl get pods -n "$NAMESPACE" -o wide
           kubectl get service -n "$NAMESPACE"
-          kubectl get endpoints -n "$NAMESPACE"
+          kubectl get ingress -n "$NAMESPACE"
+          kubectl get certificate -n "$NAMESPACE"
+          kubectl get service -n "$TRAEFIK_NAMESPACE"
           EOF
 
           bash ../../scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
             "${{ vars.AKS_NAME }}" \
-            "ENV=$ENV bash deploy.sh" \
+            "ENV=$ENV PUBLIC_HOSTNAME=$PUBLIC_HOSTNAME PUBLIC_IP_NAME=${{ vars.PUBLIC_IP_NAME }} AZURE_RESOURCE_GROUP=${{ vars.AZURE_RESOURCE_GROUP }} bash deploy.sh" \
             "."
 
-      - name: Smoke test API through web proxy
+      - name: Smoke test API over HTTPS
         shell: bash
         run: |
-          curl --fail --show-error --retry 12 --retry-delay 10 --retry-all-errors \
-            "${{ vars.PUBLIC_URL }}/api/healthz"
+          PUBLIC_HOSTNAME="${{ vars.PUBLIC_URL }}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME#http://}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME#https://}"
+          PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME%%/*}"
+
+          curl --fail --show-error --retry 18 --retry-delay 10 --retry-all-errors \
+            "https://$PUBLIC_HOSTNAME/api/healthz"
 
       - name: Collect AKS diagnostics
         if: failure()
@@ -160,7 +222,7 @@ jobs:
         run: |
           ENV=${{ steps.env.outputs.name }}
 
-          DIAG_COMMAND="kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api deployment ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api pods ---'; kubectl describe pods -n quiz-$ENV -l app=quiz-api; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true"
+          DIAG_COMMAND="kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- ingress ---'; kubectl get ingress -n quiz-$ENV -o wide; kubectl describe ingress/quiz-web -n quiz-$ENV || true; echo '--- certificate ---'; kubectl get issuer,certificate,order,challenge -n quiz-$ENV || true; kubectl describe certificate/quiz-web-tls -n quiz-$ENV || true; kubectl describe issuer/letsencrypt -n quiz-$ENV || true; echo '--- traefik ---'; kubectl get pods,svc -n traefik-$ENV -o wide || true; kubectl describe svc/traefik-$ENV -n traefik-$ENV || true; echo '--- api deployment ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api pods ---'; kubectl describe pods -n quiz-$ENV -l app=quiz-api; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true"
 
           bash scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
