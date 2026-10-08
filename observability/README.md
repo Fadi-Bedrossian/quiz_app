@@ -10,7 +10,7 @@ This directory deploys one shared AKS observability stack for both `quiz-dev` an
 - Fluent Bit as a DaemonSet scraping Kubernetes container logs from every node and sending them to Loki.
 - One provisioned Grafana dashboard: **Quiz App - Application, Golden Signals, SLOs & Logs**.
 
-Grafana is exposed over a dedicated HTTPS hostname through its own Traefik LoadBalancer. Prometheus, Loki, Alertmanager, and the remaining monitoring services stay internal-only (`ClusterIP`).
+Grafana is exposed at `/grafana` on the existing production HTTPS hostname through `traefik-prod`. Prometheus, Loki, Alertmanager, and the remaining monitoring services stay internal-only (`ClusterIP`).
 
 ## Service levels
 
@@ -36,17 +36,16 @@ Additional application metrics include in-flight requests, quiz submissions, and
 ## Deployment order
 
 1. Deploy the application change to **dev** and **prod** so `/metrics` exists and the API Service has the `app=quiz-api` label.
-2. Apply the **prod Infrastructure** workflow once after the monitoring endpoint Terraform change. This creates the static monitoring Public IP and its `cloudapp.azure.com` DNS name.
-3. Run **Actions -> Observability -> Run workflow**. The workflow uses the existing `prod` GitHub Environment for OIDC credentials/approval and deploys a dedicated `traefik-observability` ingress controller.
-4. Wait for cert-manager to issue the Let's Encrypt certificate, then open the HTTPS Grafana URL printed by the workflow.
-5. Switch the dashboard Environment variable between `dev` and `prod` to validate both applications.
+2. Run **Actions -> Observability -> Run workflow**. The workflow uses the existing `prod` GitHub Environment for OIDC credentials/approval and updates `traefik-prod` to also watch the `observability` namespace.
+3. Wait for cert-manager to issue the Grafana TLS certificate, then open the HTTPS Grafana URL printed by the workflow.
+4. Switch the dashboard Environment variable between `dev` and `prod` to validate both applications.
 
 ## Access Grafana
 
-Grafana is the only public observability UI. The hostname is derived from the production application hostname by replacing `-prod-` with `-monitoring-`, for example:
+Grafana reuses the existing production public endpoint:
 
 ```text
-https://sg-quiz-monitoring-<suffix>.northeurope.cloudapp.azure.com
+https://<prod-hostname>/grafana
 ```
 
 The username is:
