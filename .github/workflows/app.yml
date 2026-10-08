@@ -135,7 +135,7 @@ jobs:
             --set workloadIdentityClientId="${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}" --set tenantId="${{ vars.AZURE_TENANT_ID }}" --set keyVaultName="${{ vars.KEY_VAULT_NAME }}" \
             --set postgres.host="${{ vars.POSTGRES_HOST }}" --set postgres.database="${{ vars.POSTGRES_DATABASE }}" --set postgres.user="${{ vars.POSTGRES_ADMIN_USER }}" \
             --set entra.tenantId="${{ vars.AZURE_TENANT_ID }}" --set entra.clientId="${{ vars.ENTRA_CLIENT_ID }}" --set entra.audience="${{ vars.ENTRA_AUDIENCE }}" --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
-            --atomic --cleanup-on-fail --timeout 4m
+            --atomic --cleanup-on-fail --timeout 10m
 
           kubectl get pods -n "$NAMESPACE" -o wide
           kubectl get service -n "$NAMESPACE"
