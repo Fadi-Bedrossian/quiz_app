@@ -160,6 +160,11 @@ jobs:
             --set entra.adminGroupId="${{ vars.ADMIN_GROUP_ID }}" \
             --atomic --cleanup-on-fail --timeout 3m
 
+          EXTRA_WATCH_NAMESPACE=""
+          if [ "$ENV" = "prod" ]; then
+            EXTRA_WATCH_NAMESPACE='                - "observability"'
+          fi
+
           cat >/tmp/traefik-values.yaml <<VALUES
           ingressClass:
             enabled: true
@@ -171,6 +176,7 @@ jobs:
               ingressClass: "$TRAEFIK_CLASS"
               namespaces:
                 - "$NAMESPACE"
+$EXTRA_WATCH_NAMESPACE
           service:
             annotations:
               service.beta.kubernetes.io/azure-pip-name: "$PUBLIC_IP_NAME"
