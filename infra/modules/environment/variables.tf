@@ -65,7 +65,3 @@ variable "key_vault_name" {
 variable "name_suffix" {
   type = string
 }
-
-variable "frontdoor_profile_id" {
-  type = string
-}
