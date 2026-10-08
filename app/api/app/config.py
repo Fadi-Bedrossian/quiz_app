@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     appinsights_connection_string_file: str = "/mnt/secrets-store/appinsights-connection-string"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context: Any, /) -> None:
         if not self.db_password:
             self.db_password = _read_secret_file(self.db_password_file)
         if not self.appinsights_connection_string:
