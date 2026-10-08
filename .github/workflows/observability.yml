@@ -83,21 +83,14 @@ jobs:
       - name: Resolve monitoring public endpoint
         shell: bash
         run: |
-          MONITORING_PUBLIC_IP_NAME="$(az network public-ip list \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --query "[?tags.component=='observability' && tags.environment=='prod'].name | [0]" \
-            -o tsv)"
+          PROD_HOSTNAME="${{ vars.PUBLIC_HOSTNAME }}"
+          PROD_PUBLIC_IP_NAME="${{ vars.PUBLIC_IP_NAME }}"
 
-          if [ -z "$MONITORING_PUBLIC_IP_NAME" ]; then
-            echo "Monitoring public IP not found. Apply the prod infrastructure workflow first."
-            exit 1
-          fi
+          : "${PROD_HOSTNAME:?PUBLIC_HOSTNAME is required in the prod GitHub Environment}"
+          : "${PROD_PUBLIC_IP_NAME:?PUBLIC_IP_NAME is required in the prod GitHub Environment}"
 
-          MONITORING_HOSTNAME="$(az network public-ip show \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "$MONITORING_PUBLIC_IP_NAME" \
-            --query dnsSettings.fqdn \
-            -o tsv)"
+          MONITORING_HOSTNAME="${PROD_HOSTNAME/-prod-/-monitoring-}"
+          MONITORING_PUBLIC_IP_NAME="${PROD_PUBLIC_IP_NAME/-prod-pip/-monitoring-pip}"
 
           echo "MONITORING_PUBLIC_IP_NAME=$MONITORING_PUBLIC_IP_NAME" >> "$GITHUB_ENV"
           echo "MONITORING_HOSTNAME=$MONITORING_HOSTNAME" >> "$GITHUB_ENV"
