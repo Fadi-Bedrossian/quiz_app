@@ -1,6 +1,6 @@
 # quiz_app
 
-Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Microsoft Entra ID, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, Traefik, cert-manager, and Let's Encrypt.
+Production-style MCQ quiz application on Azure using Terraform, AKS, Helm, GitHub Actions, Azure Key Vault, PostgreSQL on AKS, Azure Container Registry, Azure Monitor, Traefik, cert-manager, and Let's Encrypt.
 
 ## Architecture
 
@@ -64,7 +64,7 @@ See [`docs/state-management.md`](docs/state-management.md) for the locking, conc
 
 ## Prerequisites
 
-Install Azure CLI, Terraform >= 1.8, Docker, kubectl, Helm >= 3.15, Python >= 3.12 and Node.js >= 20. You also need an Azure subscription and permission to create resource groups, role assignments, managed identities and Entra app registrations.
+Install Azure CLI, Terraform >= 1.8, Docker, kubectl, Helm >= 3.15, Python >= 3.12 and Node.js >= 20. You also need an Azure subscription and permission to create resource groups, role assignments and managed identities.
 
 ## 1. Bootstrap Azure state + GitHub OIDC
 
@@ -109,9 +109,6 @@ TFSTATE_CONTAINER=tfstate
 AZURE_RESOURCE_GROUP=sg-quiz-rg
 AKS_NAME=sg-quiz-aks
 ACR_NAME=<terraform shared output>
-ENTRA_CLIENT_ID=<after configure-entra.sh>
-ENTRA_AUDIENCE=api://<ENTRA_CLIENT_ID>
-ADMIN_GROUP_ID=<optional Entra group object ID>
 ```
 
 Environment variables added by Terraform output after each environment apply:
@@ -167,24 +164,9 @@ make tf-destroy-dev
 make tf-destroy-shared
 ```
 
-## 4. Configure Microsoft Entra ID
+## 4. Local development
 
-After both environment Terraform roots exist, get their URLs:
-
-```bash
-DEV_URL=$(terraform -chdir=infra/environments/dev output -raw public_url)
-PROD_URL=$(terraform -chdir=infra/environments/prod output -raw public_url)
-export DEV_URL PROD_URL AZURE_TENANT_ID
-./scripts/configure-entra.sh
-```
-
-The script creates an Entra application registration, exposes the `Quiz.Access` delegated API permission and configures the HTTPS `*.cloudapp.azure.com` SPA redirect URIs for dev/prod. It prints `ENTRA_CLIENT_ID` and `ENTRA_AUDIENCE`.
-
-If `ADMIN_GROUP_ID` is empty, admin operations are denied. Set it to an Entra security group object ID whose members should manage questions.
-
-## 5. Local development
-
-The local stack disables Entra authentication intentionally and uses PostgreSQL in Docker:
+The local stack uses PostgreSQL in Docker:
 
 ```bash
 docker compose up --build
@@ -194,7 +176,7 @@ Open `http://localhost:8080`.
 
 API docs: `http://localhost:8000/docs`.
 
-## 6. CI/CD
+## 5. CI/CD
 
 ### Infrastructure pipeline
 
@@ -260,7 +242,7 @@ kubectl logs -n quiz-dev deploy/quiz-dev-api
 
 ## Application behavior
 
-The seed contains 20 easy science questions. The API does not return correct answers with the question list; answers are scored server-side and explanations are returned only after submission. The UI supports one-answer MCQs, question/answer randomization, timer, retry, score/results and an Entra-protected admin management screen; the API supports full question CRUD.
+The seed contains 20 easy science questions. The API does not return correct answers with the question list; answers are scored server-side and explanations are returned only after submission. The UI supports one-answer MCQs, question/answer randomization, timer, retry, score/results and a public admin management screen; the API supports full question CRUD.
 
 ## Security notes
 
@@ -287,4 +269,3 @@ This repo prioritizes low cost but is still real Azure infrastructure. Traefik, 
 
 **HTTPS/certificate fails** — check `kubectl get ingress,issuer,certificate,order,challenge -n quiz-<env>`, verify the Traefik LoadBalancer owns the Terraform-managed public IP, and confirm the `*.cloudapp.azure.com` hostname resolves to that IP.
 
-**Entra login redirects incorrectly** — rerun `configure-entra.sh` after the Terraform public URLs are known and confirm both redirect URIs exist on the SPA app registration.

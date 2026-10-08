@@ -8,8 +8,3 @@ data:
   DB_NAME: {{ .Values.postgres.database | quote }}
   DB_USER: {{ .Values.postgres.user | quote }}
   DB_SSLMODE: "disable"
-  ENTRA_TENANT_ID: {{ .Values.entra.tenantId | quote }}
-  ENTRA_CLIENT_ID: {{ .Values.entra.clientId | quote }}
-  ENTRA_AUDIENCE: {{ .Values.entra.audience | quote }}
-  ADMIN_GROUP_ID: {{ .Values.entra.adminGroupId | quote }}
-  AUTH_DISABLED: {{ .Values.authDisabled | quote }}

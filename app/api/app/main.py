@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .auth import admin_claims, current_claims
 from .config import get_settings
 from .db import Base, SessionLocal, engine, get_db
 from .logging_config import setup_logging
@@ -79,12 +78,12 @@ def healthz():
 
 
 @app.get("/api/questions", response_model=list[QuestionPublic])
-def questions(_: dict = Depends(current_claims), db: Session = Depends(get_db)):
+def questions(db: Session = Depends(get_db)):
     return db.scalars(select(Question).order_by(Question.id)).all()
 
 
 @app.post("/api/quiz/submit", response_model=SubmitResponse)
-def submit(payload: SubmitRequest, _: dict = Depends(current_claims), db: Session = Depends(get_db)):
+def submit(payload: SubmitRequest, db: Session = Depends(get_db)):
     ids = [a.question_id for a in payload.answers]
     rows = db.scalars(select(Question).where(Question.id.in_(ids))).all()
     mapping = {q.id: q for q in rows}
@@ -113,12 +112,12 @@ def submit(payload: SubmitRequest, _: dict = Depends(current_claims), db: Sessio
 
 
 @app.get("/api/admin/questions", response_model=list[QuestionAdmin])
-def admin_list(_: dict = Depends(admin_claims), db: Session = Depends(get_db)):
+def admin_list(db: Session = Depends(get_db)):
     return db.scalars(select(Question).order_by(Question.id)).all()
 
 
 @app.post("/api/admin/questions", response_model=QuestionAdmin, status_code=201)
-def admin_create(payload: QuestionCreate, _: dict = Depends(admin_claims), db: Session = Depends(get_db)):
+def admin_create(payload: QuestionCreate, db: Session = Depends(get_db)):
     row = Question(**payload.model_dump())
     db.add(row)
     db.commit()
@@ -127,7 +126,7 @@ def admin_create(payload: QuestionCreate, _: dict = Depends(admin_claims), db: S
 
 
 @app.put("/api/admin/questions/{question_id}", response_model=QuestionAdmin)
-def admin_update(question_id: int, payload: QuestionCreate, _: dict = Depends(admin_claims), db: Session = Depends(get_db)):
+def admin_update(question_id: int, payload: QuestionCreate, db: Session = Depends(get_db)):
     row = db.get(Question, question_id)
     if not row:
         raise HTTPException(status_code=404, detail="Question not found")
@@ -139,7 +138,7 @@ def admin_update(question_id: int, payload: QuestionCreate, _: dict = Depends(ad
 
 
 @app.delete("/api/admin/questions/{question_id}", status_code=204)
-def admin_delete(question_id: int, _: dict = Depends(admin_claims), db: Session = Depends(get_db)):
+def admin_delete(question_id: int, db: Session = Depends(get_db)):
     row = db.get(Question, question_id)
     if not row:
         raise HTTPException(status_code=404, detail="Question not found")

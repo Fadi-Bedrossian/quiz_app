@@ -1,5 +1,4 @@
 environment: dev
-authDisabled: false
 replicaCount:
   web: 1
   api: 1
@@ -26,11 +25,6 @@ postgres:
   user: quizadmin
   storageClassName: managed-csi
   storage: 8Gi
-entra:
-  tenantId: ""
-  clientId: ""
-  audience: ""
-  adminGroupId: ""
 resources:
   web:
     requests: { cpu: 50m, memory: 64Mi }

@@ -17,7 +17,7 @@ def test_health_and_quiz_flow():
         assert len(body["results"]) == 20
 
 
-def test_admin_crud_when_auth_disabled():
+def test_admin_crud_publicly_available():
     payload = {
         "prompt": "What is 2 + 2?",
         "options": ["2", "3", "4", "5"],

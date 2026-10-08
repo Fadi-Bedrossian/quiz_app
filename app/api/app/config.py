@@ -15,11 +15,6 @@ def _read_secret_file(path: str) -> str:
 
 class Settings(BaseSettings):
     app_name: str = "quiz-api"
-    auth_disabled: bool = False
-    entra_tenant_id: str = ""
-    entra_client_id: str = ""
-    entra_audience: str = ""
-    admin_group_id: str = ""
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "quiz"
