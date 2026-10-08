@@ -286,7 +286,6 @@ jobs:
             has("acr_login_server") and
             has("key_vault_id") and
             has("key_vault_name") and
-            has("frontdoor_profile_id") and
             has("name_suffix")
           ' /tmp/shared-outputs.json >/dev/null; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -344,7 +343,6 @@ jobs:
               public_hostname: .public_hostname.value,
               origin_fqdn: .origin_fqdn.value,
               public_ip_name: .public_ip_name.value,
-              frontdoor_endpoint_id: .frontdoor_endpoint_id.value,
               deploy_client_id: .deploy_client_id.value,
               workload_identity_client_id: .workload_identity_client_id.value
             }'
