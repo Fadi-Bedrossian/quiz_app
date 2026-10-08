@@ -40,7 +40,10 @@ resource "azurerm_kubernetes_cluster" "main" {
     name                         = "system"
     vm_size                      = var.node_vm_size
     vnet_subnet_id               = var.subnet_id
+    auto_scaling_enabled         = true
     node_count                   = 2
+    min_count                    = 2
+    max_count                    = 3
     os_disk_size_gb              = 64
     os_sku                       = "AzureLinux3"
     type                         = "VirtualMachineScaleSets"
@@ -72,6 +75,10 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   key_vault_secrets_provider {
     secret_rotation_enabled = true
+  }
+
+  lifecycle {
+    ignore_changes = [default_node_pool[0].node_count]
   }
 
   depends_on = [time_sleep.network_rbac_propagation]
