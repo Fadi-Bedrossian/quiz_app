@@ -23,11 +23,15 @@ def current_claims(authorization: str | None = Header(default=None)) -> dict:
     token = authorization.removeprefix("Bearer ").strip()
     try:
         key = jwk_client().get_signing_key_from_jwt(token).key
+        # For Microsoft Entra v2 access tokens, the aud claim is the API's
+        # Application (client) ID GUID even when the requested scope uses an
+        # Application ID URI such as api://<client-id>/Quiz.Access.
+        expected_audience = settings.entra_audience.removeprefix("api://")
         return jwt.decode(
             token,
             key,
             algorithms=["RS256"],
-            audience=settings.entra_audience,
+            audience=expected_audience,
             issuer=f"https://login.microsoftonline.com/{settings.entra_tenant_id}/v2.0",
         )
     except Exception as exc:
