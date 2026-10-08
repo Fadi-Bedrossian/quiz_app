@@ -160,7 +160,7 @@ jobs:
         run: |
           ENV=${{ steps.env.outputs.name }}
 
-          DIAG_COMMAND="kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api describe ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true"
+          DIAG_COMMAND="kubectl get pods -n quiz-$ENV -o wide; echo '--- services ---'; kubectl get svc -n quiz-$ENV; echo '--- endpoints ---'; kubectl get endpoints -n quiz-$ENV; echo '--- api deployment ---'; kubectl describe deployment/quiz-api -n quiz-$ENV; echo '--- api pods ---'; kubectl describe pods -n quiz-$ENV -l app=quiz-api; echo '--- api logs ---'; kubectl logs deployment/quiz-api -n quiz-$ENV --tail=120 --all-containers=true || true; echo '--- postgres describe ---'; kubectl describe statefulset/quiz-postgres -n quiz-$ENV; echo '--- postgres logs ---'; kubectl logs statefulset/quiz-postgres -n quiz-$ENV --tail=120 --all-containers=true || true"
 
           bash scripts/aks-command.sh \
             "${{ vars.AZURE_RESOURCE_GROUP }}" \
