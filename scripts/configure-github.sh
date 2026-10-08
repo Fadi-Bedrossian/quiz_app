@@ -12,7 +12,6 @@ set_env_vars() {
   gh variable set PUBLIC_URL --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw public_url)"
   gh variable set PUBLIC_HOSTNAME --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw public_hostname)"
   gh variable set ORIGIN_FQDN --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw origin_fqdn)"
-  gh variable set FRONT_DOOR_ID --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw frontdoor_endpoint_id)"
   gh variable set PUBLIC_IP_NAME --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw public_ip_name)"
   gh variable set KEY_VAULT_NAME --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw key_vault_name)"
   gh variable set WORKLOAD_IDENTITY_CLIENT_ID --env "$ENV" --repo "$REPO" --body "$(terraform -chdir="$ROOT" output -raw workload_identity_client_id)"
