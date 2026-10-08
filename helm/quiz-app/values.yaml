@@ -11,9 +11,6 @@ image:
     repository: example.azurecr.io/quiz-api
     tag: SET_BY_CI
   pullPolicy: IfNotPresent
-service:
-  publicIpName: ""
-  publicIpResourceGroup: ""
 ingress:
   enabled: false
   host: ""
